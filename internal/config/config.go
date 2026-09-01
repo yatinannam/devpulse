@@ -10,7 +10,6 @@ import (
 type Config struct {
  Listen string `json:"listen"`
  Target string `json:"target"`
- Session string `json:"session"`
  WatchInterval string `json:"watch_interval"`
 }
 
