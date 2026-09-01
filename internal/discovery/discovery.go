@@ -54,7 +54,7 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 			return http.ErrUseLastResponse
 		},
 	}
-	// HEAD avoids downloading application pages just to identify a service.
+	// Start with HEAD to avoid downloading application pages. If headers do not identify the service, retry with a bounded GET.
 	req, err := http.NewRequest(http.MethodHead, "http://"+addr+"/", nil)
 	if err != nil {
 		return false, "", ""

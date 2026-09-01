@@ -20,10 +20,10 @@ ports/processes → services → HTTP traffic → endpoints → diagnostics
 - Error, slow-request, and duplicate-request detection
 - Live `watch` mode
 - Persistent local configuration
-- Cross-platform Go implementation
+- Cross-platform Go implementation (Linux, Windows, and macOS)
 
 ## Installation
-Requires **Go 1.24+**.
+Requires **Go 1.22+**.
 
 ```bash
 git clone https://github.com/yatinannam/devpulse.git
@@ -101,7 +101,7 @@ go vet ./...
 GitHub Actions runs both checks on pushes and pull requests to `main`.
 
 ## Project status
-DevPulse is in active development toward **v0.1.0**. The first release focuses on reliable local discovery, HTTP traffic capture, correlation, diagnostics, and a lightweight terminal workflow.
+DevPulse is in active development toward **v0.1.1**. The first release focuses on reliable local discovery, HTTP traffic capture, correlation, diagnostics, and a lightweight terminal workflow.
 
 ## License
 DevPulse is licensed under the MIT License.
