@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/doctor"
 	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/status"
@@ -16,7 +17,7 @@ import (
 )
 
 func main() {
-	if len(os.Args)==1 { portsCommand(nil); return }
+	if len(os.Args)==1 { statusCommand(nil); return }
 	switch os.Args[1] {
 	case "ports": portsCommand(os.Args[2:])
 	case "traffic": trafficCommand(os.Args[2:])
@@ -59,13 +60,24 @@ Saved %d requests to %s
 	_ = traffic.Shutdown(server)
 }
 func statusCommand(args []string) {
-	fs:=flag.NewFlagSet("status",flag.ExitOnError)
-	from:=fs.String("from",sessionPath(),"traffic session to summarize")
-	_=fs.Parse(args)
-	s,err:=traffic.LoadSession(*from)
-	if err!=nil {fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)}
-	status.Print(status.Build(s.Requests),status.Endpoints(s.Requests),*from)
+ fs:=flag.NewFlagSet("status",flag.ExitOnError)
+ from:=fs.String("from",sessionPath(),"traffic session to summarize")
+ _=fs.Parse(args)
+ services,err:=discovery.Discover(300*time.Millisecond)
+ if err!=nil {fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)}
+ fmt.Println("DEVPULSE")
+ fmt.Println("────────────────────────────────────────────────")
+ fmt.Println("LOCAL SERVICES")
+ for _,s:=range services {
+  marker:="○"; if s.HTTP {marker="●"}
+  if s.HTTP {fmt.Printf("%s :%-5d %-10s PID %-8s %s\n",marker,s.Port,s.Process,s.PID,s.URL)} else {fmt.Printf("%s :%-5d %-10s PID %-8s (TCP)\n",marker,s.Port,s.Process,s.PID)}
+ }
+ s,loadErr:=traffic.LoadSession(*from)
+ if loadErr!=nil {fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n",*from);return}
+ fmt.Println()
+ status.Print(status.Build(s.Requests),status.Endpoints(s.Requests),*from)
 }
+
 func doctorCommand(args []string) {
 	fs:=flag.NewFlagSet("doctor",flag.ExitOnError); from:=fs.String("from",sessionPath(),"traffic session to analyze");_=fs.Parse(args)
 	s,err:=traffic.LoadSession(*from);if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v
