@@ -67,15 +67,17 @@ func statusCommand(args []string) {
  if err!=nil {fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)}
  fmt.Println("DEVPULSE")
  fmt.Println("────────────────────────────────────────────────")
- fmt.Println("LOCAL SERVICES")
- for _,s:=range services {
-  marker:="○"; if s.HTTP {marker="●"}
-  if s.HTTP {kind:=s.Kind; if kind=="" {kind="HTTP service"}; fmt.Printf("%s :%-5d %-18s PID %-8s %s\n",marker,s.Port,kind,s.PID,s.URL)} else {fmt.Printf("%s :%-5d %-10s PID %-8s (TCP)\n",marker,s.Port,s.Process,s.PID)}
- }
  s,loadErr:=traffic.LoadSession(*from)
- if loadErr!=nil {fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n",*from);return}
- fmt.Println()
- status.Print(status.Build(s.Requests),status.Endpoints(s.Requests),*from)
+ if loadErr!=nil {
+  fmt.Println("LOCAL SERVICES")
+  for _,svc:=range services {marker:="○";if svc.HTTP{marker="●"};kind:=svc.Kind;if kind==""{kind="TCP service"};fmt.Printf("%s :%-5d %-18s PID %-8s\n",marker,svc.Port,kind,svc.PID)}
+  fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n",*from);return
+ }
+ groups:=status.GroupByService(services,s.Requests)
+ status.PrintServices(groups)
+ fmt.Printf("\nSession: %s\n",*from)
+ summary:=status.Build(s.Requests)
+ fmt.Printf("Requests %d · Errors %d · Average %s · Slow %d\n",summary.Total,summary.Errors,summary.Average.Round(time.Millisecond),summary.Slow)
 }
 
 func doctorCommand(args []string) {
