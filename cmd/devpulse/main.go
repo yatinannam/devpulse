@@ -70,7 +70,7 @@ func statusCommand(args []string) {
  fmt.Println("LOCAL SERVICES")
  for _,s:=range services {
   marker:="○"; if s.HTTP {marker="●"}
-  if s.HTTP {fmt.Printf("%s :%-5d %-10s PID %-8s %s\n",marker,s.Port,s.Process,s.PID,s.URL)} else {fmt.Printf("%s :%-5d %-10s PID %-8s (TCP)\n",marker,s.Port,s.Process,s.PID)}
+  if s.HTTP {kind:=s.Kind; if kind=="" {kind="HTTP service"}; fmt.Printf("%s :%-5d %-18s PID %-8s %s\n",marker,s.Port,kind,s.PID,s.URL)} else {fmt.Printf("%s :%-5d %-10s PID %-8s (TCP)\n",marker,s.Port,s.Process,s.PID)}
  }
  s,loadErr:=traffic.LoadSession(*from)
  if loadErr!=nil {fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n",*from);return}
