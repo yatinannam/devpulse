@@ -38,5 +38,4 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy,error) 
 }
 type startKey struct{}
 func Handler(proxy http.Handler) http.Handler { return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ ctx:=context.WithValue(r.Context(),startKey{},time.Now()); proxy.ServeHTTP(w,r.WithContext(ctx)) }) }
-func Serve(proxy http.Handler,addr string)error{return http.ListenAndServe(addr,proxy)}
 func DrainBody(resp *http.Response){if resp.Body!=nil{_,_=io.Copy(io.Discard,resp.Body);_=resp.Body.Close()}}
