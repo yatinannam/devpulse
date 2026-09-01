@@ -254,3 +254,4 @@ func doctorCommand(args []string) {
 	fmt.Printf("Session: %s · %d requests\n\n", *from, len(s.Requests))
 	doctor.Print(doctor.Analyze(s.Requests))
 }
+\nfunc printHelp() {\n\tfmt.Println("DevPulse — local development observability")\n\tfmt.Println()\n\tfmt.Println("Usage: devpulse <command>")\n\tfmt.Println()\n\tfmt.Println("Commands:")\n\tfmt.Println("  ports      List local listening ports and processes")\n\tfmt.Println("  traffic    Capture HTTP traffic through the proxy")\n\tfmt.Println("  status     Show services and captured traffic")\n\tfmt.Println("  doctor     Analyze a captured session")\n\tfmt.Println("  watch      Continuously refresh service/traffic health")\n\tfmt.Println("  config     View or change persistent defaults")\n\tfmt.Println("  version    Print the current build version")\n}\n
