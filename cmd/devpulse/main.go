@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yatinannam/devpulse/internal/config"
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/doctor"
 	"github.com/yatinannam/devpulse/internal/ports"
@@ -24,11 +25,23 @@ func main() {
 	case "doctor": doctorCommand(os.Args[2:])
 	case "status": statusCommand(os.Args[2:])
 	case "watch": watchCommand(os.Args[2:])
+	case "config": configCommand(os.Args[2:])
 	default: fmt.Fprintf(os.Stderr,"devpulse: unknown command %q
-usage: devpulse [ports|traffic|doctor|status|watch]
+usage: devpulse [ports|traffic|doctor|status|watch|config]
 ",os.Args[1]); os.Exit(2)
 	}
 }
+func loadConfig() config.Config {
+ c,err:=config.Load();if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)};return c
+}
+func configCommand(args []string) {
+ fs:=flag.NewFlagSet("config",flag.ExitOnError);setTarget:=fs.String("target","","set default upstream");setListen:=fs.String("listen","","set proxy listen address");setInterval:=fs.String("watch-interval","","set watch refresh interval");_=fs.Parse(args)
+ c:=loadConfig();changed:=false
+ if *setTarget!=""{c.Target=*setTarget;changed=true};if *setListen!=""{c.Listen=*setListen;changed=true};if *setInterval!=""{c.WatchInterval=*setInterval;changed=true}
+ if changed {if err:=config.Save(c);err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)}}
+ fmt.Printf("Config: %s\nlisten=%s\ntarget=%s\nwatch_interval=%s\n",config.Path(),c.Listen,c.Target,c.WatchInterval)
+}
+
 func portsCommand(args []string) {
 	fs:=flag.NewFlagSet("ports",flag.ExitOnError); watch:=fs.Bool("watch",false,"watch for port changes"); _=fs.Parse(args)
 	entries,err:=ports.List(); if err!=nil {fmt.Fprintf(os.Stderr,"devpulse: %v
@@ -43,7 +56,8 @@ func sessionPath() string {
 	return filepath.Join(home,".devpulse","session.json")
 }
 func trafficCommand(args []string) {
-	fs:=flag.NewFlagSet("traffic",flag.ExitOnError); listen:=fs.String("listen",":9090","proxy listen address"); target:=fs.String("target","http://localhost:3000","upstream application"); _=fs.Parse(args)
+	c:=loadConfig()
+	fs:=flag.NewFlagSet("traffic",flag.ExitOnError); listen:=fs.String("listen",c.Listen,"proxy listen address"); target:=fs.String("target",c.Target,"upstream application"); _=fs.Parse(args)
 	recorder:=traffic.NewRecorder(func(r traffic.Request){fmt.Printf("%s  %-6s %-32s %d  %s  → %s:%d
 ",r.Time.Format("15:04:05"),r.Method,r.Path,r.Status,r.Latency.Round(time.Millisecond),r.TargetHost,r.TargetPort)})
 	proxy,err:=traffic.NewProxy(*target,recorder);if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v
@@ -81,8 +95,9 @@ func statusCommand(args []string) {
 }
 
 func watchCommand(args []string) {
+ c:=loadConfig();defaultInterval:=2*time.Second;if d,err:=time.ParseDuration(c.WatchInterval);err==nil {defaultInterval=d}
  fs:=flag.NewFlagSet("watch",flag.ExitOnError)
- interval:=fs.Duration("interval",2*time.Second,"refresh interval")
+ interval:=fs.Duration("interval",defaultInterval,"refresh interval")
  from:=fs.String("from",sessionPath(),"traffic session to summarize")
  _=fs.Parse(args)
  ticker:=time.NewTicker(*interval);defer ticker.Stop()
