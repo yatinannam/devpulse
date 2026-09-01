@@ -21,7 +21,7 @@ jobs:
           cache: true
       - name: Format check
         shell: bash
-        run: gofmt -l .
+        run: test -z "$(gofmt -l .)"
       - name: Test
         run: go test ./...
       - name: Vet
