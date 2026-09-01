@@ -17,6 +17,8 @@ import (
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) == 1 {
 		statusCommand(nil)
@@ -35,8 +37,10 @@ func main() {
 		watchCommand(os.Args[2:])
 	case "config":
 		configCommand(os.Args[2:])
+	case "version":
+		fmt.Println("devpulse " + version)
 	default:
-		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|config]\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|config|version]\n", os.Args[1])
 		os.Exit(2)
 	}
 }
