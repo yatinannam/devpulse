@@ -23,7 +23,7 @@ func main() {
 	case "traffic": trafficCommand(os.Args[2:])
 	case "doctor": doctorCommand(os.Args[2:])
 	case "status": statusCommand(os.Args[2:])
-	case "watch": fmt.Println("devpulse: watch is not implemented yet")
+	case "watch": watchCommand(os.Args[2:])
 	default: fmt.Fprintf(os.Stderr,"devpulse: unknown command %q
 usage: devpulse [ports|traffic|doctor|status|watch]
 ",os.Args[1]); os.Exit(2)
@@ -79,6 +79,28 @@ func statusCommand(args []string) {
  summary:=status.Build(s.Requests)
  fmt.Printf("Requests %d · Errors %d · Average %s · Slow %d\n",summary.Total,summary.Errors,summary.Average.Round(time.Millisecond),summary.Slow)
 }
+
+func watchCommand(args []string) {
+ fs:=flag.NewFlagSet("watch",flag.ExitOnError)
+ interval:=fs.Duration("interval",2*time.Second,"refresh interval")
+ from:=fs.String("from",sessionPath(),"traffic session to summarize")
+ _=fs.Parse(args)
+ ticker:=time.NewTicker(*interval);defer ticker.Stop()
+ refresh:=func(){
+  services,err:=discovery.Discover(300*time.Millisecond);if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);return}
+  fmt.Print("\033[2J\033[H")
+  fmt.Println("DEVPULSE WATCH");fmt.Println("────────────────────────────────────────────────")
+  s,err:=traffic.LoadSession(*from)
+  if err!=nil {status.PrintServices(status.GroupByService(services,nil));fmt.Printf("\nNo captured session: %s\n",*from);return}
+  status.PrintServices(status.GroupByService(services,s.Requests))
+  summary:=status.Build(s.Requests)
+  fmt.Printf("\nRequests %d · Errors %d · Average %s · Slow %d\n",summary.Total,summary.Errors,summary.Average.Round(time.Millisecond),summary.Slow)
+  fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\n",time.Now().Format("15:04:05"),*interval)
+ }
+ refresh()
+ for range ticker.C {refresh()}
+}
+
 
 func doctorCommand(args []string) {
 	fs:=flag.NewFlagSet("doctor",flag.ExitOnError); from:=fs.String("from",sessionPath(),"traffic session to analyze");_=fs.Parse(args)
