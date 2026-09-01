@@ -87,20 +87,19 @@ func watchCommand(args []string) {
  _=fs.Parse(args)
  ticker:=time.NewTicker(*interval);defer ticker.Stop()
  refresh:=func(){
-  services,err:=discovery.Discover(300*time.Millisecond);if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);return}
+  services,err:=discovery.Discover(300*time.Millisecond);if err!=nil{fmt.Fprintf(os.Stderr,"devpulse: %v\\n",err);return}
   fmt.Print("\033[2J\033[H")
   fmt.Println("DEVPULSE WATCH");fmt.Println("────────────────────────────────────────────────")
   s,err:=traffic.LoadSession(*from)
-  if err!=nil {status.PrintServices(status.GroupByService(services,nil));fmt.Printf("\nNo captured session: %s\n",*from);return}
+  if err!=nil {status.PrintServices(status.GroupByService(services,nil));fmt.Printf("\nNo captured session: %s\\n",*from);return}
   status.PrintServices(status.GroupByService(services,s.Requests))
   summary:=status.Build(s.Requests)
-  fmt.Printf("\nRequests %d · Errors %d · Average %s · Slow %d\n",summary.Total,summary.Errors,summary.Average.Round(time.Millisecond),summary.Slow)
-  fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\n",time.Now().Format("15:04:05"),*interval)
+  fmt.Printf("\nRequests %d · Errors %d · Average %s · Slow %d\\n",summary.Total,summary.Errors,summary.Average.Round(time.Millisecond),summary.Slow)
+  fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\\n",time.Now().Format("15:04:05"),*interval)
  }
  refresh()
  for range ticker.C {refresh()}
 }
-
 
 func doctorCommand(args []string) {
 	fs:=flag.NewFlagSet("doctor",flag.ExitOnError); from:=fs.String("from",sessionPath(),"traffic session to analyze");_=fs.Parse(args)
