@@ -12,14 +12,14 @@ import (
 )
 
 type Service struct {
-	Port int
+	Port    int
 	Process string
-	PID string
-	State string
-	HTTP bool
-	URL string
-	Kind string
-	Server string
+	PID     string
+	State   string
+	HTTP    bool
+	URL     string
+	Kind    string
+	Server  string
 }
 
 func Discover(timeout time.Duration) ([]Service, error) {

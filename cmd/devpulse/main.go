@@ -140,7 +140,7 @@ func trafficCommand(args []string) {
 
 	server, err := traffic.Start(traffic.Handler(proxy), *listen)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
 	sig := make(chan os.Signal, 1)

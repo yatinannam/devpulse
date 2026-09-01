@@ -1,0 +1,800 @@
+diff --git a/cmd/devpulse/main.go b/cmd/devpulse/main.go
+index 207b1c9..c438cf7 100644
+--- a/cmd/devpulse/main.go
++++ b/cmd/devpulse/main.go
+@@ -140,7 +140,7 @@ func trafficCommand(args []string) {
+ 
+ 	server, err := traffic.Start(traffic.Handler(proxy), *listen)
+ 	if err != nil {
+-		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
++		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+ 		os.Exit(1)
+ 	}
+ 	sig := make(chan os.Signal, 1)
+diff --git a/go.mod b/go.mod
+index c912667..babdb6e 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,3 +1,3 @@
+ module github.com/yatinannam/devpulse
+ 
+-go 1.24
++go 1.22
+diff --git a/internal/config/config.go b/internal/config/config.go
+index a222646..2b9fbfe 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -1,34 +1,56 @@
+ package config
+ 
+ import (
+- "encoding/json"
+- "fmt"
+- "os"
+- "path/filepath"
+- )
++	"encoding/json"
++	"fmt"
++	"os"
++	"path/filepath"
++)
+ 
+ type Config struct {
+- Listen string `json:"listen"`
+- Target string `json:"target"`
+- WatchInterval string `json:"watch_interval"`
++	Listen        string `json:"listen"`
++	Target        string `json:"target"`
++	WatchInterval string `json:"watch_interval"`
+ }
+ 
+-func Default() Config { return Config{Listen:":9090",Target:"http://localhost:3000",WatchInterval:"2s"} }
++func Default() Config {
++	return Config{Listen: ":9090", Target: "http://localhost:3000", WatchInterval: "2s"}
++}
+ 
+ func Path() string {
+- if p:=os.Getenv("DEVPULSE_CONFIG");p!="" {return p}
+- home,err:=os.UserHomeDir();if err!=nil{return ".devpulse/config.json"}
+- return filepath.Join(home,".devpulse","config.json")
++	if p := os.Getenv("DEVPULSE_CONFIG"); p != "" {
++		return p
++	}
++	home, err := os.UserHomeDir()
++	if err != nil {
++		return ".devpulse/config.json"
++	}
++	return filepath.Join(home, ".devpulse", "config.json")
+ }
+ 
+-func Load() (Config,error) {
+- c:=Default();data,err:=os.ReadFile(Path());if os.IsNotExist(err){return c,nil};if err!=nil{return c,fmt.Errorf("read config: %w",err)}
+- if err:=json.Unmarshal(data,&c);err!=nil{return c,fmt.Errorf("decode config: %w",err)}
+- return c,nil
++func Load() (Config, error) {
++	c := Default()
++	data, err := os.ReadFile(Path())
++	if os.IsNotExist(err) {
++		return c, nil
++	}
++	if err != nil {
++		return c, fmt.Errorf("read config: %w", err)
++	}
++	if err := json.Unmarshal(data, &c); err != nil {
++		return c, fmt.Errorf("decode config: %w", err)
++	}
++	return c, nil
+ }
+ 
+ func Save(c Config) error {
+- data,err:=json.MarshalIndent(c,"","  ");if err!=nil{return err}
+- p:=Path();if err:=os.MkdirAll(filepath.Dir(p),0755);err!=nil{return err}
+- return os.WriteFile(p,data,0600)
++	data, err := json.MarshalIndent(c, "", "  ")
++	if err != nil {
++		return err
++	}
++	p := Path()
++	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
++		return err
++	}
++	return os.WriteFile(p, data, 0600)
+ }
+diff --git a/internal/config/config_test.go b/internal/config/config_test.go
+index 64b0c9a..195ca4d 100644
+--- a/internal/config/config_test.go
++++ b/internal/config/config_test.go
+@@ -1,14 +1,23 @@
+ package config
+ 
+ import (
+- "path/filepath"
+- "testing"
++	"path/filepath"
++	"testing"
+ )
+ 
+ func TestSaveLoad(t *testing.T) {
+- p:=filepath.Join(t.TempDir(),"config.json");t.Setenv("DEVPULSE_CONFIG",p)
+- c:=Default();c.Target="http://localhost:8080"
+- if err:=Save(c);err!=nil{t.Fatal(err)}
+- got,err:=Load();if err!=nil{t.Fatal(err)}
+- if got.Target!=c.Target{t.Fatalf("target=%q",got.Target)}
++	p := filepath.Join(t.TempDir(), "config.json")
++	t.Setenv("DEVPULSE_CONFIG", p)
++	c := Default()
++	c.Target = "http://localhost:8080"
++	if err := Save(c); err != nil {
++		t.Fatal(err)
++	}
++	got, err := Load()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Target != c.Target {
++		t.Fatalf("target=%q", got.Target)
++	}
+ }
+diff --git a/internal/discovery/discovery.go b/internal/discovery/discovery.go
+index a4c2815..977ac77 100644
+--- a/internal/discovery/discovery.go
++++ b/internal/discovery/discovery.go
+@@ -12,14 +12,14 @@ import (
+ )
+ 
+ type Service struct {
+-	Port int
++	Port    int
+ 	Process string
+-	PID string
+-	State string
+-	HTTP bool
+-	URL string
+-	Kind string
+-	Server string
++	PID     string
++	State   string
++	HTTP    bool
++	URL     string
++	Kind    string
++	Server  string
+ }
+ 
+ func Discover(timeout time.Duration) ([]Service, error) {
+diff --git a/internal/doctor/doctor.go b/internal/doctor/doctor.go
+index ff39439..56dd7ba 100644
+--- a/internal/doctor/doctor.go
++++ b/internal/doctor/doctor.go
+@@ -1,38 +1,72 @@
+ package doctor
+ 
+ import (
+- "fmt"
+- "sort"
+- "time"
+- "github.com/yatinannam/devpulse/internal/traffic"
++	"fmt"
++	"github.com/yatinannam/devpulse/internal/traffic"
++	"sort"
++	"time"
+ )
+ 
+-type Finding struct { Level, Title, Detail, Advice string }
++type Finding struct{ Level, Title, Detail, Advice string }
+ 
+ func Analyze(entries []traffic.Request) []Finding {
+- var findings []Finding
+- if len(entries)==0{return findings}
+- var errors,slow int
+- for _,e:=range entries {if e.Status>=400{errors++};if e.Latency>=500*time.Millisecond{slow++}}
+- if errors>0 {findings=append(findings,Finding{"ERROR","HTTP errors",fmt.Sprintf("%d of %d requests returned 4xx/5xx",errors,len(entries)),"Inspect the failing endpoints and response status; repeated 401/403 responses usually indicate auth/session problems."})}
+- if slow>0 {findings=append(findings,Finding{"WARN","Slow requests",fmt.Sprintf("%d request(s) took 500ms or more",slow),"Check backend logs and downstream calls for the slow endpoint before optimizing the client."})}
++	var findings []Finding
++	if len(entries) == 0 {
++		return findings
++	}
++	var errors, slow int
++	for _, e := range entries {
++		if e.Status >= 400 {
++			errors++
++		}
++		if e.Latency >= 500*time.Millisecond {
++			slow++
++		}
++	}
++	if errors > 0 {
++		findings = append(findings, Finding{"ERROR", "HTTP errors", fmt.Sprintf("%d of %d requests returned 4xx/5xx", errors, len(entries)), "Inspect the failing endpoints and response status; repeated 401/403 responses usually indicate auth/session problems."})
++	}
++	if slow > 0 {
++		findings = append(findings, Finding{"WARN", "Slow requests", fmt.Sprintf("%d request(s) took 500ms or more", slow), "Check backend logs and downstream calls for the slow endpoint before optimizing the client."})
++	}
+ 
+- type key struct{method,path string}; groups:=map[key][]traffic.Request{}
+- for _,e:=range entries{k:=key{e.Method,e.Path};groups[k]=append(groups[k],e)}
+- type dup struct{k key;count int;first,last time.Time};var ds []dup
+- for k,g:=range groups {
+-  if len(g)<3{continue}
+-  sort.Slice(g,func(i,j int)bool{return g[i].Time.Before(g[j].Time)})
+-  if g[len(g)-1].Time.Sub(g[0].Time)<=3*time.Second{ds=append(ds,dup{k,len(g),g[0].Time,g[len(g)-1].Time})}
+- }
+- sort.Slice(ds,func(i,j int)bool{return ds[i].count>ds[j].count})
+- for _,d:=range ds{findings=append(findings,Finding{"WARN","Duplicate requests",fmt.Sprintf("%s %s called %d times in %.1fs",d.k.method,d.k.path,d.count,d.last.Sub(d.first).Seconds()),"Check frontend effects, event handlers, retries, and data-fetching logic for an unintended request loop."})}
+- return findings
++	type key struct{ method, path string }
++	groups := map[key][]traffic.Request{}
++	for _, e := range entries {
++		k := key{e.Method, e.Path}
++		groups[k] = append(groups[k], e)
++	}
++	type dup struct {
++		k           key
++		count       int
++		first, last time.Time
++	}
++	var ds []dup
++	for k, g := range groups {
++		if len(g) < 3 {
++			continue
++		}
++		sort.Slice(g, func(i, j int) bool { return g[i].Time.Before(g[j].Time) })
++		if g[len(g)-1].Time.Sub(g[0].Time) <= 3*time.Second {
++			ds = append(ds, dup{k, len(g), g[0].Time, g[len(g)-1].Time})
++		}
++	}
++	sort.Slice(ds, func(i, j int) bool { return ds[i].count > ds[j].count })
++	for _, d := range ds {
++		findings = append(findings, Finding{"WARN", "Duplicate requests", fmt.Sprintf("%s %s called %d times in %.1fs", d.k.method, d.k.path, d.count, d.last.Sub(d.first).Seconds()), "Check frontend effects, event handlers, retries, and data-fetching logic for an unintended request loop."})
++	}
++	return findings
+ }
+ 
+ func Print(findings []Finding) {
+- fmt.Println("DEVPULSE DOCTOR")
+- fmt.Println("────────────────────────────────────────────────")
+- if len(findings)==0{fmt.Println("✓ No obvious HTTP issues detected.");return}
+- for _,f:=range findings{fmt.Printf("%s  %s — %s\n",f.Level,f.Title,f.Detail);fmt.Printf("       → %s\n",f.Advice)}
++	fmt.Println("DEVPULSE DOCTOR")
++	fmt.Println("────────────────────────────────────────────────")
++	if len(findings) == 0 {
++		fmt.Println("✓ No obvious HTTP issues detected.")
++		return
++	}
++	for _, f := range findings {
++		fmt.Printf("%s  %s — %s\n", f.Level, f.Title, f.Detail)
++		fmt.Printf("       → %s\n", f.Advice)
++	}
+ }
+diff --git a/internal/doctor/doctor_test.go b/internal/doctor/doctor_test.go
+index 1f4c923..88270f1 100644
+--- a/internal/doctor/doctor_test.go
++++ b/internal/doctor/doctor_test.go
+@@ -1,18 +1,20 @@
+ package doctor
+ 
+ import (
+- "testing"
+- "time"
+- "github.com/yatinannam/devpulse/internal/traffic"
++	"github.com/yatinannam/devpulse/internal/traffic"
++	"testing"
++	"time"
+ )
+ 
+ func TestAnalyzeDuplicateRequests(t *testing.T) {
+- now:=time.Now()
+- entries:=[]traffic.Request{
+-  {Time:now,Method:"GET",Path:"/api/users",Status:200},
+-  {Time:now.Add(time.Second),Method:"GET",Path:"/api/users",Status:200},
+-  {Time:now.Add(2*time.Second),Method:"GET",Path:"/api/users",Status:200},
+- }
+- findings:=Analyze(entries)
+- if len(findings)!=1 || findings[0].Title!="Duplicate requests" { t.Fatalf("unexpected findings: %#v",findings) }
++	now := time.Now()
++	entries := []traffic.Request{
++		{Time: now, Method: "GET", Path: "/api/users", Status: 200},
++		{Time: now.Add(time.Second), Method: "GET", Path: "/api/users", Status: 200},
++		{Time: now.Add(2 * time.Second), Method: "GET", Path: "/api/users", Status: 200},
++	}
++	findings := Analyze(entries)
++	if len(findings) != 1 || findings[0].Title != "Duplicate requests" {
++		t.Fatalf("unexpected findings: %#v", findings)
++	}
+ }
+diff --git a/internal/ports/ports_linux.go b/internal/ports/ports_linux.go
+index cefb6d2..a1c776e 100644
+--- a/internal/ports/ports_linux.go
++++ b/internal/ports/ports_linux.go
+@@ -6,19 +6,32 @@ import (
+ 	"bufio"
+ 	"fmt"
+ 	"os/exec"
++	"regexp"
+ 	"strconv"
+ 	"strings"
+ )
+ 
++// processInfo matches the users:(("name",pid=1234,fd=6)) suffix that
++// `ss -ltnp` appends to each listening socket line.
++var processInfo = regexp.MustCompile(`users:\(\("([^"]+)",pid=(\d+)`)
++
+ func List() ([]Entry, error) {
+ 	out, err := exec.Command("ss", "-ltnp").Output()
+ 	if err != nil {
+ 		return nil, fmt.Errorf("ss: %w", err)
+ 	}
++	return parseSS(string(out)), nil
++}
++
++// parseSS parses the output of `ss -ltnp` into port Entries, including
++// process name and PID when the caller has permission to see them
++// (root, or the process' own owner).
++func parseSS(output string) []Entry {
+ 	var entries []Entry
+-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
++	scanner := bufio.NewScanner(strings.NewReader(output))
+ 	for scanner.Scan() {
+-		fields := strings.Fields(scanner.Text())
++		line := scanner.Text()
++		fields := strings.Fields(line)
+ 		if len(fields) < 4 || fields[0] != "LISTEN" {
+ 			continue
+ 		}
+@@ -31,7 +44,12 @@ func List() ([]Entry, error) {
+ 		if err != nil {
+ 			continue
+ 		}
+-		entries = append(entries, Entry{Port: p, State: "LISTEN"})
++		entry := Entry{Port: p, State: "LISTEN"}
++		if m := processInfo.FindStringSubmatch(line); m != nil {
++			entry.Process = m[1]
++			entry.PID = m[2]
++		}
++		entries = append(entries, entry)
+ 	}
+-	return entries, nil
++	return entries
+ }
+diff --git a/internal/ports/ports_linux_test.go b/internal/ports/ports_linux_test.go
+new file mode 100644
+index 0000000..9636c54
+--- /dev/null
++++ b/internal/ports/ports_linux_test.go
+@@ -0,0 +1,44 @@
++//go:build linux
++
++package ports
++
++import "testing"
++
++func TestParseSS(t *testing.T) {
++	const sample = `State   Recv-Q  Send-Q   Local Address:Port    Peer Address:Port  Process
++LISTEN  0       128      127.0.0.1:6379         0.0.0.0:*          users:(("redis-server",pid=1234,fd=6))
++LISTEN  0       4096     0.0.0.0:5432           0.0.0.0:*          users:(("postgres",pid=999,fd=7))
++LISTEN  0       128      [::]:22                [::]:*             users:(("sshd",pid=1,fd=3))
++LISTEN  0       128      127.0.0.1:3000         0.0.0.0:*
++ESTAB   0       0        127.0.0.1:6379         127.0.0.1:54321
++`
++
++	entries := parseSS(sample)
++	if len(entries) != 4 {
++		t.Fatalf("got %d entries, want 4: %+v", len(entries), entries)
++	}
++
++	byPort := map[int]Entry{}
++	for _, e := range entries {
++		byPort[e.Port] = e
++	}
++
++	if e := byPort[6379]; e.Process != "redis-server" || e.PID != "1234" {
++		t.Errorf("port 6379: got process=%q pid=%q, want redis-server/1234", e.Process, e.PID)
++	}
++	if e := byPort[5432]; e.Process != "postgres" || e.PID != "999" {
++		t.Errorf("port 5432: got process=%q pid=%q, want postgres/999", e.Process, e.PID)
++	}
++	if e := byPort[22]; e.Process != "sshd" || e.PID != "1" {
++		t.Errorf("port 22 (IPv6 addr): got process=%q pid=%q, want sshd/1", e.Process, e.PID)
++	}
++	// No users:(...) segment (e.g. unprivileged caller) should degrade
++	// gracefully to an empty Process/PID rather than being dropped or
++	// misparsed.
++	if e := byPort[3000]; e.Process != "" || e.PID != "" {
++		t.Errorf("port 3000: got process=%q pid=%q, want empty", e.Process, e.PID)
++	}
++	if _, ok := byPort[54321]; ok {
++		t.Errorf("ESTAB line should not produce an entry")
++	}
++}
+diff --git a/internal/ports/watch_test.go b/internal/ports/watch_test.go
+index a688bea..8816899 100644
+--- a/internal/ports/watch_test.go
++++ b/internal/ports/watch_test.go
+@@ -3,8 +3,12 @@ package ports
+ import "testing"
+ 
+ func TestSnapshotOf(t *testing.T) {
+- entries:=[]Entry{{Port:3000,Process:"node",PID:"1"},{Port:5432,Process:"postgres",PID:"2"}}
+- s:=SnapshotOf(entries)
+- if len(s)!=2 {t.Fatalf("len=%d want 2",len(s))}
+- if s[3000].Process!="node" || s[5432].PID!="2" {t.Fatalf("unexpected snapshot: %+v",s)}
++	entries := []Entry{{Port: 3000, Process: "node", PID: "1"}, {Port: 5432, Process: "postgres", PID: "2"}}
++	s := SnapshotOf(entries)
++	if len(s) != 2 {
++		t.Fatalf("len=%d want 2", len(s))
++	}
++	if s[3000].Process != "node" || s[5432].PID != "2" {
++		t.Fatalf("unexpected snapshot: %+v", s)
++	}
+ }
+diff --git a/internal/status/status.go b/internal/status/status.go
+index 9e3dada..f6bdd96 100644
+--- a/internal/status/status.go
++++ b/internal/status/status.go
+@@ -1,43 +1,134 @@
+ package status
+ 
+ import (
+- "fmt"
+- "sort"
+- "time"
+- "github.com/yatinannam/devpulse/internal/discovery"
+- "github.com/yatinannam/devpulse/internal/traffic"
++	"fmt"
++	"github.com/yatinannam/devpulse/internal/discovery"
++	"github.com/yatinannam/devpulse/internal/traffic"
++	"sort"
++	"time"
+ )
+ 
+-type Summary struct { Total, Errors, Slow int; Average time.Duration; Findings int }
++type Summary struct {
++	Total, Errors, Slow int
++	Average             time.Duration
++	Findings            int
++}
+ 
+ func Build(entries []traffic.Request) Summary {
+- var s Summary; s.Total=len(entries); if len(entries)==0{return s}
+- var total time.Duration
+- for _,e:=range entries {total+=e.Latency;if e.Status>=400{s.Errors++};if e.Latency>=500*time.Millisecond{s.Slow++}}
+- s.Average=total/time.Duration(len(entries));return s
++	var s Summary
++	s.Total = len(entries)
++	if len(entries) == 0 {
++		return s
++	}
++	var total time.Duration
++	for _, e := range entries {
++		total += e.Latency
++		if e.Status >= 400 {
++			s.Errors++
++		}
++		if e.Latency >= 500*time.Millisecond {
++			s.Slow++
++		}
++	}
++	s.Average = total / time.Duration(len(entries))
++	return s
++}
++
++type Endpoint struct {
++	Method, Path  string
++	Count, Errors int
++	Average       time.Duration
+ }
+-type Endpoint struct { Method,Path string; Count,Errors int; Average time.Duration }
++
+ func Endpoints(entries []traffic.Request) []Endpoint {
+- m:=map[string]*Endpoint{}
+- for _,e:=range entries {key:=e.Method+" "+e.Path;x:=m[key];if x==nil{x=&Endpoint{Method:e.Method,Path:e.Path};m[key]=x};x.Count++;if e.Status>=400{x.Errors++};x.Average+=e.Latency}
+- out:=make([]Endpoint,0,len(m));for _,x:=range m{x.Average/=time.Duration(x.Count);out=append(out,*x)}
+- sort.Slice(out,func(i,j int)bool{if out[i].Errors!=out[j].Errors{return out[i].Errors>out[j].Errors};if out[i].Average!=out[j].Average{return out[i].Average>out[j].Average};return out[i].Count>out[j].Count});return out
++	m := map[string]*Endpoint{}
++	for _, e := range entries {
++		key := e.Method + " " + e.Path
++		x := m[key]
++		if x == nil {
++			x = &Endpoint{Method: e.Method, Path: e.Path}
++			m[key] = x
++		}
++		x.Count++
++		if e.Status >= 400 {
++			x.Errors++
++		}
++		x.Average += e.Latency
++	}
++	out := make([]Endpoint, 0, len(m))
++	for _, x := range m {
++		x.Average /= time.Duration(x.Count)
++		out = append(out, *x)
++	}
++	sort.Slice(out, func(i, j int) bool {
++		if out[i].Errors != out[j].Errors {
++			return out[i].Errors > out[j].Errors
++		}
++		if out[i].Average != out[j].Average {
++			return out[i].Average > out[j].Average
++		}
++		return out[i].Count > out[j].Count
++	})
++	return out
++}
++
++type ServiceTraffic struct {
++	Service             discovery.Service
++	Requests            []Endpoint
++	Total, Errors, Slow int
++	Average             time.Duration
+ }
+-type ServiceTraffic struct { Service discovery.Service; Requests []Endpoint; Total,Errors,Slow int; Average time.Duration }
++
+ func GroupByService(services []discovery.Service, entries []traffic.Request) []ServiceTraffic {
+- groups:=map[int][]traffic.Request{};for _,e:=range entries{groups[e.TargetPort]=append(groups[e.TargetPort],e)}
+- out:=make([]ServiceTraffic,0,len(services));for _,s:=range services{es:=groups[s.Port];summary:=Build(es);out=append(out,ServiceTraffic{Service:s,Requests:Endpoints(es),Total:summary.Total,Errors:summary.Errors,Slow:summary.Slow,Average:summary.Average})};return out
++	groups := map[int][]traffic.Request{}
++	for _, e := range entries {
++		groups[e.TargetPort] = append(groups[e.TargetPort], e)
++	}
++	out := make([]ServiceTraffic, 0, len(services))
++	for _, s := range services {
++		es := groups[s.Port]
++		summary := Build(es)
++		out = append(out, ServiceTraffic{Service: s, Requests: Endpoints(es), Total: summary.Total, Errors: summary.Errors, Slow: summary.Slow, Average: summary.Average})
++	}
++	return out
++}
++func Health(g ServiceTraffic) string {
++	if !g.Service.HTTP {
++		return "running"
++	}
++	if g.Errors > 0 {
++		return "error"
++	}
++	if g.Slow > 0 {
++		return "warning"
++	}
++	return "healthy"
+ }
+-func Health(g ServiceTraffic) string {if !g.Service.HTTP{return "running"};if g.Errors>0{return "error"};if g.Slow>0{return "warning"};return "healthy"}
+ func PrintServices(groups []ServiceTraffic) {
+- fmt.Println("SERVICES")
+- for _,g:=range groups {
+-  kind:=g.Service.Kind;if kind==""{kind="TCP service"}
+-  fmt.Printf("%s :%-5d %-18s %3d req  %2d err  %s avg  [%s]\n",healthMarker(Health(g)),g.Service.Port,kind,g.Total,g.Errors,g.Average.Round(time.Millisecond),Health(g))
+-  for _,e:=range g.Requests {
+-   if e.Errors==0&&e.Average<500*time.Millisecond {continue}
+-   fmt.Printf("  ! %-6s %-28s %3d×  %s avg  (%d errors)\n",e.Method,e.Path,e.Count,e.Average.Round(time.Millisecond),e.Errors)
+-  }
+- }
+-}
+-func healthMarker(h string) string {switch h{case "healthy":return "●";case "warning":return "●";case "error":return "●";default:return "○"}}
++	fmt.Println("SERVICES")
++	for _, g := range groups {
++		kind := g.Service.Kind
++		if kind == "" {
++			kind = "TCP service"
++		}
++		fmt.Printf("%s :%-5d %-18s %3d req  %2d err  %s avg  [%s]\n", healthMarker(Health(g)), g.Service.Port, kind, g.Total, g.Errors, g.Average.Round(time.Millisecond), Health(g))
++		for _, e := range g.Requests {
++			if e.Errors == 0 && e.Average < 500*time.Millisecond {
++				continue
++			}
++			fmt.Printf("  ! %-6s %-28s %3d×  %s avg  (%d errors)\n", e.Method, e.Path, e.Count, e.Average.Round(time.Millisecond), e.Errors)
++		}
++	}
++}
++func healthMarker(h string) string {
++	switch h {
++	case "healthy":
++		return "●"
++	case "warning":
++		return "●"
++	case "error":
++		return "●"
++	default:
++		return "○"
++	}
++}
+diff --git a/internal/status/status_test.go b/internal/status/status_test.go
+index ece3c3f..ec1378f 100644
+--- a/internal/status/status_test.go
++++ b/internal/status/status_test.go
+@@ -1,10 +1,24 @@
+ package status
+ 
+ import (
+- "testing"
+- "time"
+- "github.com/yatinannam/devpulse/internal/discovery"
+- "github.com/yatinannam/devpulse/internal/traffic"
++	"github.com/yatinannam/devpulse/internal/discovery"
++	"github.com/yatinannam/devpulse/internal/traffic"
++	"testing"
++	"time"
+ )
+-func TestBuild(t *testing.T){e:=[]traffic.Request{{Status:200,Latency:100*time.Millisecond},{Status:500,Latency:600*time.Millisecond}};s:=Build(e);if s.Total!=2||s.Errors!=1||s.Slow!=1||s.Average!=350*time.Millisecond{t.Fatalf("unexpected %+v",s)}}
+-func TestGroupByService(t *testing.T){services:=[]discovery.Service{{Port:3000,HTTP:true,Kind:"Node / Vite"},{Port:5432,HTTP:false}};e:=[]traffic.Request{{TargetPort:3000,Status:200,Latency:100*time.Millisecond,Method:"GET",Path:"/x"},{TargetPort:3000,Status:500,Latency:600*time.Millisecond,Method:"GET",Path:"/x"}};g:=GroupByService(services,e);if len(g)!=2||g[0].Total!=2||g[0].Errors!=1||Health(g[0])!="error"||g[1].Total!=0{t.Fatalf("unexpected %+v",g)}}
++
++func TestBuild(t *testing.T) {
++	e := []traffic.Request{{Status: 200, Latency: 100 * time.Millisecond}, {Status: 500, Latency: 600 * time.Millisecond}}
++	s := Build(e)
++	if s.Total != 2 || s.Errors != 1 || s.Slow != 1 || s.Average != 350*time.Millisecond {
++		t.Fatalf("unexpected %+v", s)
++	}
++}
++func TestGroupByService(t *testing.T) {
++	services := []discovery.Service{{Port: 3000, HTTP: true, Kind: "Node / Vite"}, {Port: 5432, HTTP: false}}
++	e := []traffic.Request{{TargetPort: 3000, Status: 200, Latency: 100 * time.Millisecond, Method: "GET", Path: "/x"}, {TargetPort: 3000, Status: 500, Latency: 600 * time.Millisecond, Method: "GET", Path: "/x"}}
++	g := GroupByService(services, e)
++	if len(g) != 2 || g[0].Total != 2 || g[0].Errors != 1 || Health(g[0]) != "error" || g[1].Total != 0 {
++		t.Fatalf("unexpected %+v", g)
++	}
++}
+diff --git a/internal/traffic/proxy.go b/internal/traffic/proxy.go
+index 8c44cb4..7637a8c 100644
+--- a/internal/traffic/proxy.go
++++ b/internal/traffic/proxy.go
+@@ -13,29 +13,87 @@ import (
+ )
+ 
+ type Request struct {
+-	Time time.Time
+-	Method string
+-	Path string
+-	Status int
+-	Latency time.Duration
+-	Bytes int64
++	Time       time.Time
++	Method     string
++	Path       string
++	Status     int
++	Latency    time.Duration
++	Bytes      int64
+ 	TargetHost string
+ 	TargetPort int
+ }
+-type Recorder struct { mu sync.RWMutex; entries []Request; onAdd func(Request) }
+-func NewRecorder(onAdd func(Request)) *Recorder { return &Recorder{onAdd:onAdd} }
+-func (r *Recorder) Add(e Request) { r.mu.Lock(); r.entries=append(r.entries,e); if len(r.entries)>1000 { r.entries=r.entries[len(r.entries)-1000:] }; r.mu.Unlock(); if r.onAdd!=nil { r.onAdd(e) } }
+-func (r *Recorder) Snapshot() []Request { r.mu.RLock(); defer r.mu.RUnlock(); out:=make([]Request,len(r.entries)); copy(out,r.entries); return out }
++type Recorder struct {
++	mu      sync.RWMutex
++	entries []Request
++	onAdd   func(Request)
++}
++
++func NewRecorder(onAdd func(Request)) *Recorder { return &Recorder{onAdd: onAdd} }
++func (r *Recorder) Add(e Request) {
++	r.mu.Lock()
++	r.entries = append(r.entries, e)
++	if len(r.entries) > 1000 {
++		r.entries = r.entries[len(r.entries)-1000:]
++	}
++	r.mu.Unlock()
++	if r.onAdd != nil {
++		r.onAdd(e)
++	}
++}
++func (r *Recorder) Snapshot() []Request {
++	r.mu.RLock()
++	defer r.mu.RUnlock()
++	out := make([]Request, len(r.entries))
++	copy(out, r.entries)
++	return out
++}
+ 
+-func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy,error) {
+-	u,err:=url.Parse(target); if err!=nil{return nil,fmt.Errorf("invalid target: %w",err)}
+-	proxy:=httputil.NewSingleHostReverseProxy(u); original:=proxy.Director
+-	proxy.Director=func(req *http.Request){ original(req); req.Header.Set("X-DevPulse","1") }
+-	record:=func(req *http.Request,status int,bytes int64,start time.Time){ port:=0; if p:=u.Port();p!=""{fmt.Sscanf(p,"%d",&port)}else if u.Scheme=="https"{port=443}else{port=80}; recorder.Add(Request{Time:start,Method:req.Method,Path:req.URL.RequestURI(),Status:status,Latency:time.Since(start),Bytes:bytes,TargetHost:u.Hostname(),TargetPort:port}) }
+-	proxy.ModifyResponse=func(resp *http.Response)error{if start,ok:=resp.Request.Context().Value(startKey{}).(time.Time);ok{record(resp.Request,resp.StatusCode,resp.ContentLength,start)};return nil}
+-	proxy.ErrorHandler=func(w http.ResponseWriter,req *http.Request,err error){if start,ok:=req.Context().Value(startKey{}).(time.Time);ok{record(req,502,0,start)};log.Printf("proxy error: %s %v",req.URL.RequestURI(),err);http.Error(w,"devpulse proxy error",502)}
+-	return proxy,nil
++func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error) {
++	u, err := url.Parse(target)
++	if err != nil {
++		return nil, fmt.Errorf("invalid target: %w", err)
++	}
++	proxy := httputil.NewSingleHostReverseProxy(u)
++	original := proxy.Director
++	proxy.Director = func(req *http.Request) { original(req); req.Header.Set("X-DevPulse", "1") }
++	record := func(req *http.Request, status int, bytes int64, start time.Time) {
++		port := 0
++		if p := u.Port(); p != "" {
++			fmt.Sscanf(p, "%d", &port)
++		} else if u.Scheme == "https" {
++			port = 443
++		} else {
++			port = 80
++		}
++		recorder.Add(Request{Time: start, Method: req.Method, Path: req.URL.RequestURI(), Status: status, Latency: time.Since(start), Bytes: bytes, TargetHost: u.Hostname(), TargetPort: port})
++	}
++	proxy.ModifyResponse = func(resp *http.Response) error {
++		if start, ok := resp.Request.Context().Value(startKey{}).(time.Time); ok {
++			record(resp.Request, resp.StatusCode, resp.ContentLength, start)
++		}
++		return nil
++	}
++	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
++		if start, ok := req.Context().Value(startKey{}).(time.Time); ok {
++			record(req, 502, 0, start)
++		}
++		log.Printf("proxy error: %s %v", req.URL.RequestURI(), err)
++		http.Error(w, "devpulse proxy error", 502)
++	}
++	return proxy, nil
+ }
++
+ type startKey struct{}
+-func Handler(proxy http.Handler) http.Handler { return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){ ctx:=context.WithValue(r.Context(),startKey{},time.Now()); proxy.ServeHTTP(w,r.WithContext(ctx)) }) }
+-func DrainBody(resp *http.Response){if resp.Body!=nil{_,_=io.Copy(io.Discard,resp.Body);_=resp.Body.Close()}}
++
++func Handler(proxy http.Handler) http.Handler {
++	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		ctx := context.WithValue(r.Context(), startKey{}, time.Now())
++		proxy.ServeHTTP(w, r.WithContext(ctx))
++	})
++}
++func DrainBody(resp *http.Response) {
++	if resp.Body != nil {
++		_, _ = io.Copy(io.Discard, resp.Body)
++		_ = resp.Body.Close()
++	}
++}
+diff --git a/internal/traffic/proxy_test.go b/internal/traffic/proxy_test.go
+index 1ebce50..47d385a 100644
+--- a/internal/traffic/proxy_test.go
++++ b/internal/traffic/proxy_test.go
+@@ -14,15 +14,27 @@ func TestProxyRecordsRequest(t *testing.T) {
+ 	defer backend.Close()
+ 	recorder := NewRecorder(nil)
+ 	proxy, err := NewProxy(backend.URL, recorder)
+-	if err != nil { t.Fatal(err) }
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	server := httptest.NewServer(Handler(proxy))
+ 	defer server.Close()
+ 	resp, err := http.Get(server.URL + "/api/users?active=true")
+-	if err != nil { t.Fatal(err) }
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	defer resp.Body.Close()
+-	if resp.StatusCode != http.StatusOK { t.Fatalf("got status %d, want 200", resp.StatusCode) }
++	if resp.StatusCode != http.StatusOK {
++		t.Fatalf("got status %d, want 200", resp.StatusCode)
++	}
+ 	entries := recorder.Snapshot()
+-	if len(entries) != 1 { t.Fatalf("got %d recorded requests, want 1", len(entries)) }
+-	if entries[0].Method != http.MethodGet { t.Fatalf("got method %q, want GET", entries[0].Method) }
+-	if entries[0].Path != "/api/users?active=true" { t.Fatalf("got path %q", entries[0].Path) }
++	if len(entries) != 1 {
++		t.Fatalf("got %d recorded requests, want 1", len(entries))
++	}
++	if entries[0].Method != http.MethodGet {
++		t.Fatalf("got method %q, want GET", entries[0].Method)
++	}
++	if entries[0].Path != "/api/users?active=true" {
++		t.Fatalf("got path %q", entries[0].Path)
++	}
+ }
+diff --git a/internal/traffic/session_test.go b/internal/traffic/session_test.go
+index 1917b20..15a7d76 100644
+--- a/internal/traffic/session_test.go
++++ b/internal/traffic/session_test.go
+@@ -9,10 +9,10 @@ import (
+ func TestSessionRoundTrip(t *testing.T) {
+ 	path := filepath.Join(t.TempDir(), "session.json")
+ 	entries := []Request{{
+-		Time: time.Unix(100, 0),
+-		Method: "GET",
+-		Path: "/api/users",
+-		Status: 200,
++		Time:       time.Unix(100, 0),
++		Method:     "GET",
++		Path:       "/api/users",
++		Status:     200,
+ 		TargetHost: "localhost",
+ 		TargetPort: 3000,
+ 	}}

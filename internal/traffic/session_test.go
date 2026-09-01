@@ -9,10 +9,10 @@ import (
 func TestSessionRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.json")
 	entries := []Request{{
-		Time: time.Unix(100, 0),
-		Method: "GET",
-		Path: "/api/users",
-		Status: 200,
+		Time:       time.Unix(100, 0),
+		Method:     "GET",
+		Path:       "/api/users",
+		Status:     200,
 		TargetHost: "localhost",
 		TargetPort: 3000,
 	}}
