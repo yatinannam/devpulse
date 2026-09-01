@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/yatinannam/devpulse/internal/ports"
 )
@@ -15,6 +16,21 @@ func main() {
 
 	switch command {
 	case "ports":
+		if len(os.Args) > 2 && os.Args[2] == "--watch" {
+			entries, err := ports.List()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+				os.Exit(1)
+			}
+			ports.Print(entries)
+			fmt.Println("\nWatching for port changes... (Ctrl+C to stop)")
+			if err := ports.Watch(time.Second, ports.PrintChange); err != nil {
+				fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+
 		entries, err := ports.List()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
