@@ -49,6 +49,7 @@ func Watch(interval time.Duration, onChange func(added, removed []Entry)) error 
 		}
 		previous = current
 	}
+	return nil
 }
 
 func PrintChange(added, removed []Entry) {
