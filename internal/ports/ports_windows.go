@@ -4,6 +4,7 @@ package ports
 
 import (
 	"bufio"
+	"encoding/csv"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -59,15 +60,10 @@ func processName(pid string) (string, error) {
 		return "", err
 	}
 
-	line := strings.TrimSpace(string(out))
-	if line == "" || strings.HasPrefix(line, "INFO:") {
+	reader := csv.NewReader(strings.NewReader(string(out)))
+	record, err := reader.Read()
+	if err != nil || len(record) == 0 || strings.HasPrefix(record[0], "INFO:") {
 		return "", fmt.Errorf("process not found")
 	}
-
-	fields := strings.Split(line, "","")
-	if len(fields) == 0 {
-		return "", fmt.Errorf("process not found")
-	}
-
-	return strings.Trim(fields[0], """), nil
+	return record[0], nil
 }
