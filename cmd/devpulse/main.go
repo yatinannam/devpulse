@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/traffic"
@@ -14,7 +15,6 @@ func main() {
 		portsCommand(nil)
 		return
 	}
-
 	switch os.Args[1] {
 	case "ports":
 		portsCommand(os.Args[2:])
@@ -33,19 +33,13 @@ func portsCommand(args []string) {
 	fs := flag.NewFlagSet("ports", flag.ExitOnError)
 	watch := fs.Bool("watch", false, "watch for port changes")
 	_ = fs.Parse(args)
-
 	entries, err := ports.List()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-		os.Exit(1)
-	}
+	if err != nil { fmt.Fprintf(os.Stderr, "devpulse: %v\n", err); os.Exit(1) }
 	ports.Print(entries)
-
 	if *watch {
 		fmt.Println("\nWatching for port changes... (Ctrl+C to stop)")
-		if err := ports.Watch(1e9, ports.PrintChange); err != nil {
-			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-			os.Exit(1)
+		if err := ports.Watch(time.Second, ports.PrintChange); err != nil {
+			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err); os.Exit(1)
 		}
 	}
 }
@@ -56,19 +50,18 @@ func trafficCommand(args []string) {
 	target := fs.String("target", "http://localhost:3000", "upstream application")
 	_ = fs.Parse(args)
 
-	recorder := &traffic.Recorder{}
+	recorder := traffic.NewRecorder(func(r traffic.Request) {
+		fmt.Printf("%s  %-6s %-32s %d  %s\n", r.Time.Format("15:04:05"), r.Method, r.Path, r.Status, r.Latency.Round(time.Millisecond))
+	})
 	proxy, err := traffic.NewProxy(*target, recorder)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-		os.Exit(1)
-	}
+	if err != nil { fmt.Fprintf(os.Stderr, "devpulse: %v\n", err); os.Exit(1) }
 
-	fmt.Printf("DevPulse traffic proxy listening on %s → %s\n", *listen, *target)
-	fmt.Println("Configure your client to send HTTP traffic through this proxy.")
-	fmt.Println("Press Ctrl+C to stop.")
-
+	fmt.Println("DEVPULSE TRAFFIC")
+	fmt.Println("────────────────────────────────────────────────")
+	fmt.Printf("Proxy: %s → %s\n", *listen, *target)
+	fmt.Println("Waiting for HTTP traffic... (Ctrl+C to stop)")
+	fmt.Println()
 	if err := traffic.Serve(traffic.Handler(proxy), *listen); err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err); os.Exit(1)
 	}
 }
