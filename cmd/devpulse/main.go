@@ -138,7 +138,11 @@ func trafficCommand(args []string) {
 	fmt.Println("Waiting for HTTP traffic... (Ctrl+C to save and stop)")
 	fmt.Println()
 
-	server := traffic.Start(traffic.Handler(proxy), *listen)
+	server, err := traffic.Start(traffic.Handler(proxy), *listen)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
+		os.Exit(1)
+	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
