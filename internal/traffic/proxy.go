@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -12,25 +13,34 @@ import (
 )
 
 type Request struct {
-	Time      time.Time
-	Method    string
-	Path      string
-	Status    int
-	Latency   time.Duration
-	Bytes     int64
+	Time    time.Time
+	Method  string
+	Path    string
+	Status  int
+	Latency time.Duration
+	Bytes   int64
 }
 
 type Recorder struct {
 	mu      sync.RWMutex
 	entries []Request
+	onAdd   func(Request)
+}
+
+func NewRecorder(onAdd func(Request)) *Recorder {
+	return &Recorder{onAdd: onAdd}
 }
 
 func (r *Recorder) Add(entry Request) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.entries = append(r.entries, entry)
 	if len(r.entries) > 1000 {
 		r.entries = r.entries[len(r.entries)-1000:]
+	}
+	r.mu.Unlock()
+
+	if r.onAdd != nil {
+		r.onAdd(entry)
 	}
 }
 
@@ -81,13 +91,9 @@ type startKey struct{}
 
 func Handler(proxy http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := contextWithStart(r.Context(), time.Now())
+		ctx := context.WithValue(r.Context(), startKey{}, time.Now())
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func contextWithStart(ctx context.Context, t time.Time) context.Context {
-	return context.WithValue(ctx, startKey{}, t)
 }
 
 func Serve(proxy http.Handler, addr string) error {
