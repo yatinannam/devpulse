@@ -11,6 +11,7 @@ import (
 
 	"github.com/yatinannam/devpulse/internal/doctor"
 	"github.com/yatinannam/devpulse/internal/ports"
+	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
 
@@ -20,9 +21,10 @@ func main() {
 	case "ports": portsCommand(os.Args[2:])
 	case "traffic": trafficCommand(os.Args[2:])
 	case "doctor": doctorCommand(os.Args[2:])
+	case "status": statusCommand(os.Args[2:])
 	case "watch": fmt.Println("devpulse: watch is not implemented yet")
 	default: fmt.Fprintf(os.Stderr,"devpulse: unknown command %q
-usage: devpulse [ports|traffic|doctor|watch]
+usage: devpulse [ports|traffic|doctor|status|watch]
 ",os.Args[1]); os.Exit(2)
 	}
 }
@@ -55,6 +57,14 @@ func trafficCommand(args []string) {
 Saved %d requests to %s
 ",len(entries),sessionPath())}
 	_ = traffic.Shutdown(server)
+}
+func statusCommand(args []string) {
+	fs:=flag.NewFlagSet("status",flag.ExitOnError)
+	from:=fs.String("from",sessionPath(),"traffic session to summarize")
+	_=fs.Parse(args)
+	s,err:=traffic.LoadSession(*from)
+	if err!=nil {fmt.Fprintf(os.Stderr,"devpulse: %v\n",err);os.Exit(1)}
+	status.Print(status.Build(s.Requests),status.Endpoints(s.Requests),*from)
 }
 func doctorCommand(args []string) {
 	fs:=flag.NewFlagSet("doctor",flag.ExitOnError); from:=fs.String("from",sessionPath(),"traffic session to analyze");_=fs.Parse(args)
