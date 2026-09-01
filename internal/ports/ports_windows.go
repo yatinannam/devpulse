@@ -23,6 +23,7 @@ func List() ([]Entry, error) {
 		if len(fields) < 5 || !strings.EqualFold(fields[3], "LISTENING") {
 			continue
 		}
+
 		port := fields[1]
 		if i := strings.LastIndex(port, ":"); i >= 0 {
 			port = port[i+1:]
@@ -31,7 +32,12 @@ func List() ([]Entry, error) {
 		if err != nil {
 			continue
 		}
-		entries = append(entries, Entry{Port: p, PID: fields[4], State: "LISTENING"})
+
+		entries = append(entries, Entry{
+			Port:  p,
+			PID:   fields[4],
+			State: "LISTENING",
+		})
 	}
 
 	for i := range entries {
@@ -43,17 +49,25 @@ func List() ([]Entry, error) {
 }
 
 func processName(pid string) (string, error) {
-	out, err := exec.Command("tasklist", "/FI", "PID eq "+pid, "/FO", "CSV", "/NH").Output()
+	out, err := exec.Command(
+		"tasklist",
+		"/FI", "PID eq "+pid,
+		"/FO", "CSV",
+		"/NH",
+	).Output()
 	if err != nil {
 		return "", err
 	}
+
 	line := strings.TrimSpace(string(out))
 	if line == "" || strings.HasPrefix(line, "INFO:") {
 		return "", fmt.Errorf("process not found")
 	}
+
 	fields := strings.Split(line, "","")
 	if len(fields) == 0 {
 		return "", fmt.Errorf("process not found")
 	}
+
 	return strings.Trim(fields[0], """), nil
 }
