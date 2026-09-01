@@ -20,12 +20,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-      - goos: darwin
-        goarch: arm64
-        goamd64: v2
 
 archives:
   - formats: [tar.gz]
