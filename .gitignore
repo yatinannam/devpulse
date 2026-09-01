@@ -1,0 +1,10 @@
+# Binaries
+devpulse
+devpulse.exe
+
+# Go
+*.test
+*.out
+
+# Local DevPulse data
+.devpulse/
