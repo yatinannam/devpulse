@@ -104,4 +104,4 @@ GitHub Actions runs both checks on pushes and pull requests to `main`.
 DevPulse is in active development toward **v0.1.0**. The first release focuses on reliable local discovery, HTTP traffic capture, correlation, diagnostics, and a lightweight terminal workflow.
 
 ## License
-License will be added before the first public release.
+DevPulse is licensed under the MIT License.
