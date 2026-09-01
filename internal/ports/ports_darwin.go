@@ -3,7 +3,6 @@
 package ports
 
 import (
-	"bufio"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -39,4 +38,3 @@ func parseLsof(output string) []Entry {
 	return entries
 }
 
-var _ = bufio.ErrInvalidUnreadByte
