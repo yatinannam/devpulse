@@ -12,7 +12,7 @@ func Start(proxy http.Handler, addr string) (*http.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen on %s: %w", addr, err)
 	}
-	server := &http.Server{Addr: addr, Handler: proxy}
+	server := &http.Server{Addr: listener.Addr().String(), Handler: proxy}
 	go func() { _ = server.Serve(listener) }()
 	return server, nil
 }
