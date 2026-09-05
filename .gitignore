@@ -1,6 +1,6 @@
 # Binaries
-devpulse
-devpulse.exe
+/devpulse
+/devpulse.exe
 
 # Go
 *.test
