@@ -41,29 +41,34 @@ func List() ([]Entry, error) {
 		})
 	}
 
+	pMap := processMap()
 	for i := range entries {
-		if name, err := processName(entries[i].PID); err == nil {
+		if name, ok := pMap[entries[i].PID]; ok {
 			entries[i].Process = name
 		}
 	}
 	return entries, nil
 }
 
-func processName(pid string) (string, error) {
-	out, err := exec.Command(
-		"tasklist",
-		"/FI", "PID eq "+pid,
-		"/FO", "CSV",
-		"/NH",
-	).Output()
+func processMap() map[string]string {
+	out, err := exec.Command("tasklist", "/FO", "CSV", "/NH").Output()
 	if err != nil {
-		return "", err
+		return nil
 	}
 
+	m := make(map[string]string)
 	reader := csv.NewReader(strings.NewReader(string(out)))
-	record, err := reader.Read()
-	if err != nil || len(record) == 0 || strings.HasPrefix(record[0], "INFO:") {
-		return "", fmt.Errorf("process not found")
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			break
+		}
+		if len(record) >= 2 {
+			pid := strings.TrimSpace(record[1])
+			name := strings.TrimSpace(record[0])
+			name = strings.TrimSuffix(name, ".exe")
+			m[pid] = name
+		}
 	}
-	return record[0], nil
+	return m
 }

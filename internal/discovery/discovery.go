@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/ports"
@@ -27,15 +28,21 @@ func Discover(timeout time.Duration) ([]Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Service, 0, len(entries))
-	for _, e := range entries {
-		s := Service{Port: e.Port, Process: e.Process, PID: e.PID, State: e.State}
-		s.HTTP, s.Kind, s.Server = probe(e.Port, timeout)
-		if s.HTTP {
-			s.URL = fmt.Sprintf("http://127.0.0.1:%d", e.Port)
-		}
-		out = append(out, s)
+	out := make([]Service, len(entries))
+	var wg sync.WaitGroup
+	for i, e := range entries {
+		wg.Add(1)
+		go func(idx int, entry ports.Entry) {
+			defer wg.Done()
+			s := Service{Port: entry.Port, Process: entry.Process, PID: entry.PID, State: entry.State}
+			s.HTTP, s.Kind, s.Server = probe(entry.Port, timeout)
+			if s.HTTP {
+				s.URL = fmt.Sprintf("http://127.0.0.1:%d", entry.Port)
+			}
+			out[idx] = s
+		}(i, e)
 	}
+	wg.Wait()
 	return out, nil
 }
 
