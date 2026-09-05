@@ -101,7 +101,7 @@ go vet ./...
 GitHub Actions runs both checks on pushes and pull requests to `main`.
 
 ## Project status
-DevPulse is in active development toward **v0.1.1**. The first release focuses on reliable local discovery, HTTP traffic capture, correlation, diagnostics, and a lightweight terminal workflow.
+DevPulse is in active development toward **v0.1.2**. The first release focuses on reliable local discovery, HTTP traffic capture, correlation, diagnostics, and a lightweight terminal workflow.
 
 ## License
 DevPulse is licensed under the MIT License.
