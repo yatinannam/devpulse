@@ -22,7 +22,7 @@ func List() ([]Entry, error) {
 func parseLsof(output string) []Entry {
 	var entries []Entry
 	var process, pid string
-	for _, line := range strings.Split(output, "\\n") {
+	for _, line := range strings.Split(output, "\n") {
 		if line == "" { continue }
 		switch line[0] {
 		case 'p': pid = strings.TrimPrefix(line, "p")

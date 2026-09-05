@@ -39,8 +39,10 @@ func main() {
 		configCommand(os.Args[2:])
 	case "version":
 		fmt.Println("devpulse " + version)
+	case "help", "-h", "--help":
+		printHelp()
 	default:
-		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|config|version]\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|config|version|help]\n", os.Args[1])
 		os.Exit(2)
 	}
 }
@@ -254,4 +256,19 @@ func doctorCommand(args []string) {
 	fmt.Printf("Session: %s · %d requests\n\n", *from, len(s.Requests))
 	doctor.Print(doctor.Analyze(s.Requests))
 }
-\nfunc printHelp() {\n\tfmt.Println("DevPulse — local development observability")\n\tfmt.Println()\n\tfmt.Println("Usage: devpulse <command>")\n\tfmt.Println()\n\tfmt.Println("Commands:")\n\tfmt.Println("  ports      List local listening ports and processes")\n\tfmt.Println("  traffic    Capture HTTP traffic through the proxy")\n\tfmt.Println("  status     Show services and captured traffic")\n\tfmt.Println("  doctor     Analyze a captured session")\n\tfmt.Println("  watch      Continuously refresh service/traffic health")\n\tfmt.Println("  config     View or change persistent defaults")\n\tfmt.Println("  version    Print the current build version")\n}\n
+
+func printHelp() {
+	fmt.Println("DevPulse — local development observability")
+	fmt.Println()
+	fmt.Println("Usage: devpulse <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  ports      List local listening ports and processes")
+	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
+	fmt.Println("  status     Show services and captured traffic")
+	fmt.Println("  doctor     Analyze a captured session")
+	fmt.Println("  watch      Continuously refresh service/traffic health")
+	fmt.Println("  config     View or change persistent defaults")
+	fmt.Println("  version    Print the current build version")
+}
+
