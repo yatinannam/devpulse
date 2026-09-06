@@ -56,6 +56,19 @@ func loadConfig() config.Config {
 	return c
 }
 
+func recentRequests(entries []traffic.Request, n int) []traffic.Request {
+	if n < 1 {
+		return nil
+	}
+	if n > len(entries) {
+		n = len(entries)
+	}
+	start := len(entries) - n
+	out := make([]traffic.Request, n)
+	copy(out, entries[start:])
+	return out
+}
+
 func recentCommand(args []string) {
 	fs := flag.NewFlagSet("recent", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to inspect")
@@ -73,14 +86,11 @@ func recentCommand(args []string) {
 		os.Exit(1)
 	}
 
-	start := len(s.Requests) - *n
-	if start < 0 {
-		start = 0
-	}
+	recent := recentRequests(s.Requests, *n)
 	fmt.Println("RECENT ACTIVITY")
 	fmt.Println("────────────────────────────────────────────────")
-	for i := start; i < len(s.Requests); i++ {
-		r := s.Requests[i]
+	for i := len(recent) - 1; i >= 0; i-- {
+		r := recent[i]
 		marker := " "
 		if r.Status >= 400 || r.Latency >= 500*time.Millisecond {
 			marker = "!"
@@ -89,8 +99,9 @@ func recentCommand(args []string) {
 			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
 			r.Latency.Round(time.Millisecond))
 	}
-	fmt.Printf("\nShowing %d of %d requests\n", len(s.Requests)-start, len(s.Requests))
+	fmt.Printf("\nShowing %d of %d requests\n", len(recent), len(s.Requests))
 }
+
 
 func configCommand(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
