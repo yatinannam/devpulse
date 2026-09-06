@@ -47,6 +47,48 @@ func main() {
 	}
 }
 
+func initCommand(args []string) {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	_ = fs.Parse(args)
+
+	projectInfo, err := project.Detect(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	services, err := discovery.Discover(250 * time.Millisecond)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	target, ok := project.SelectTarget(services)
+	if !ok {
+		fmt.Println("DEVPULSE INIT")
+		fmt.Println("────────────────────────────────────────────────")
+		fmt.Printf("Project: %s\n", projectInfo.Name)
+		fmt.Printf("Detected: %s\n", projectInfo.Kind)
+		fmt.Println()
+		fmt.Println("No local HTTP service matched this project.")
+		fmt.Println("Start the application, then run `devpulse init` again.")
+		return
+	}
+
+	c := loadConfig()
+	c.Target = target.URL
+	if err := config.Save(c); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("DEVPULSE INIT")
+	fmt.Println("────────────────────────────────────────────────")
+	fmt.Printf("Project:  %s\n", projectInfo.Name)
+	fmt.Printf("Detected: %s\n", projectInfo.Kind)
+	fmt.Printf("Target:   %s\n", target.URL)
+	fmt.Println()
+	fmt.Println("✓ DevPulse configured for this project")
+	fmt.Println()
+	fmt.Println("Next: devpulse traffic")
+}
 func loadConfig() config.Config {
 	c, err := config.Load()
 	if err != nil {
@@ -310,6 +352,7 @@ func printHelp() {
 	fmt.Println("Usage: devpulse <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
