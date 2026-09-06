@@ -1,32 +1,308 @@
 # DevPulse
 
-**Local development observability for developers who want to know what is running, what is receiving traffic, and what needs attention.**
+<div align="center">
 
-DevPulse combines two small tools into one workflow:
-- **PortDoctor** — discovers local listening services, processes, and common frameworks.
-- **APIWatch** — records HTTP traffic and surfaces errors, slow requests, and duplicate calls.
+### Local Development Observability for the Terminal
 
-Together:
+**Know what is running. See what is receiving traffic. Find what needs attention.**
+
+[![CI](https://github.com/yatinannam/devpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/yatinannam/devpulse/actions/workflows/ci.yml)
+[![Security](https://github.com/yatinannam/devpulse/actions/workflows/security.yml/badge.svg)](https://github.com/yatinannam/devpulse/actions/workflows/security.yml)
+[![CodeQL](https://github.com/yatinannam/devpulse/actions/workflows/codeql.yml/badge.svg)](https://github.com/yatinannam/devpulse/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/github/license/yatinannam/devpulse)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/yatinannam/devpulse)](https://github.com/yatinannam/devpulse/releases)
+
+</div>
+
+---
+
+## What is DevPulse?
+
+DevPulse is a **cross-platform Go CLI for local development observability**.
+
+It combines two ideas into one terminal workflow:
+
+- **PortDoctor** — discovers local listening services, processes, and HTTP-capable endpoints.
+- **APIWatch** — captures HTTP traffic through a local reverse proxy and records request-level telemetry.
+
+The result is a small local diagnostic pipeline:
+
 ```text
-ports/processes → services → HTTP traffic → endpoints → diagnostics
+┌──────────────────────────────────────────────────────────┐
+│                     LOCAL MACHINE                        │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  processes ──► ports ──► HTTP services ──► endpoints    │
+│                                           │              │
+│                                           ▼              │
+│                                     HTTP traffic         │
+│                                           │              │
+│                           ┌───────────────┼────────────┐ │
+│                           ▼               ▼            ▼ │
+│                        status           recent       doctor
+│                           │               │            │
+│                           └───────────────┼────────────┘ │
+│                                           ▼              │
+│                                      watch              │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## Features
-- Local TCP port and process discovery
-- Framework/service identification
-- HTTP reverse-proxy traffic capture
-- Persistent traffic sessions
-- Service ↔ endpoint correlation
-- Error, slow-request, and duplicate-request detection
-- Live `watch` mode
-- Persistent local configuration
-- Cross-platform Go implementation (Linux, Windows, and macOS)
+DevPulse is deliberately **local-first**: session data and configuration stay on the developer's machine unless the developer explicitly moves them elsewhere.
 
-## Installation
+---
+
+## ⚡ Quick Start
+
+Install the binary once, put it on your `PATH`, then initialize the project:
+
+```bash
+cd my-project
+devpulse init
+devpulse traffic
+```
+
+After traffic has been captured:
+
+```bash
+devpulse status
+devpulse recent
+devpulse doctor
+devpulse watch
+```
+
+Need the command reference?
+
+```bash
+devpulse
+devpulse help
+devpulse --help
+devpulse -h
+```
+
+Version aliases:
+
+```bash
+devpulse version
+devpulse --version
+devpulse -v
+```
+
+---
+
+## 🧭 The Developer Workflow
+
+```text
+        ┌───────────────┐
+        │  devpulse     │
+        │  init         │
+        └───────┬───────┘
+                │
+                ▼
+      detect project + target
+                │
+                ▼
+        ┌───────────────┐
+        │  devpulse     │
+        │  traffic      │
+        └───────┬───────┘
+                │
+                ▼
+      local reverse proxy :9090
+                │
+                ▼
+        ┌─────────────────┐
+        │   application   │
+        └────────┬────────┘
+                 │
+                 ▼
+          session.json
+                 │
+        ┌────────┼─────────┐
+        ▼        ▼         ▼
+      status   recent    doctor
+        │
+        └──────────────► watch
+```
+
+The intended experience is:
+
+> **Install once → initialize once → inspect continuously.**
+
+---
+
+## 🔬 What DevPulse Observes
+
+| Layer | Signal | DevPulse view |
+| --- | --- | --- |
+| Process | PID / process name | PortDoctor |
+| Network | Listening TCP sockets | PortDoctor |
+| Service | HTTP reachability | PortDoctor |
+| Framework | HTTP/server fingerprints | Discovery |
+| Request | Method + URI + status | APIWatch |
+| Timing | Request latency | APIWatch |
+| Volume | Endpoint request counts | Status |
+| Failures | 4xx / 5xx responses | Doctor |
+| Repetition | Repeated request patterns | Doctor |
+| Live state | Port changes / refresh | Watch |
+
+---
+
+## 🏗 Architecture
+
+```mermaid
+flowchart TD
+    A[Developer Terminal] --> B[DevPulse CLI]
+    B --> C[Project Discovery]
+    B --> D[PortDoctor]
+    B --> E[APIWatch]
+
+    C --> F[Project Type]
+    D --> G[Processes / Ports]
+    D --> H[HTTP Services]
+
+    E --> I[Local Reverse Proxy]
+    I --> J[Application]
+    I --> K[Request Recorder]
+    K --> L[Session Store]
+
+    H --> M[Service Correlation]
+    L --> M
+
+    M --> N[Status]
+    L --> O[Recent]
+    L --> P[Doctor]
+    M --> Q[Watch]
+```
+
+### Runtime model
+
+```text
+┌──────────────┐       ┌─────────────────────┐
+│ PortDoctor   │──────►│                     │
+│              │       │ Service Correlation │──────► status/watch
+└──────────────┘       │                     │
+                       └──────────┬──────────┘
+                                  ▲
+                                  │
+┌──────────────┐       ┌──────────┴──────────┐
+│ APIWatch     │──────►│ Session / Endpoints │──────► recent/doctor
+│              │       │                     │
+└──────────────┘       └─────────────────────┘
+```
+
+---
+
+## 🛠 Command Reference
+
+| Command | Description |
+| --- | --- |
+| `devpulse init` | Detect the current project and configure a local HTTP target |
+| `devpulse ports` | List local listening ports and processes |
+| `devpulse ports --watch` | Watch for port additions/removals |
+| `devpulse traffic` | Capture HTTP traffic through the local proxy |
+| `devpulse status` | Correlate discovered services with captured traffic |
+| `devpulse recent` | Show the most recent captured requests |
+| `devpulse doctor` | Analyze a captured session for errors and suspicious patterns |
+| `devpulse watch` | Continuously refresh local service/traffic state |
+| `devpulse config` | Read or update persistent defaults |
+| `devpulse version` | Print the current build version |
+
+Every command is intended to expose command-specific flags through:
+
+```bash
+devpulse <command> --help
+```
+
+---
+
+## 📡 APIWatch
+
+APIWatch runs as a local reverse proxy.
+
+Default topology:
+
+```text
+client
+  │
+  ▼
+127.0.0.1:9090
+  │
+  │  DevPulse recorder
+  ▼
+localhost:3000
+```
+
+Default configuration:
+
+```text
+listen = :9090
+target = http://localhost:3000
+session = ~/.devpulse/session.json
+```
+
+Example:
+
+```bash
+devpulse traffic --target http://localhost:8080 --listen :9090
+```
+
+Captured requests are persisted as a versioned JSON session.
+
+---
+
+## 🩺 PortDoctor
+
+PortDoctor performs platform-specific local socket inspection:
+
+```text
+Linux  → ss
+Windows → netstat + tasklist
+macOS  → lsof
+```
+
+The implementation abstracts those platform details behind the same internal service model, so the CLI presents one interface across supported platforms.
+
+HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing.
+
+---
+
+## 🧠 Diagnostics
+
+The diagnostic layer currently aggregates:
+
+```text
+request count
+    +
+error count
+    +
+average latency
+    +
+slow-request count
+    +
+endpoint frequency
+    +
+repeated-request patterns
+```
+
+Example mental model:
+
+```text
+GET /api/users
+├── 184 requests
+├── 4 errors
+├── 72 ms average
+└── 2 repeated-request findings
+```
+
+This data model is also the foundation for the next generation of DevPulse analysis: baselines, change detection, anomaly correlation, and local dependency reasoning.
+
+---
+
+## 💻 Installation
 
 ### Windows
 
-Download the latest Windows x64 archive from the GitHub Releases page, extract `devpulse.exe`, and add its directory to `PATH`.
+Download the latest Windows archive from [GitHub Releases](https://github.com/yatinannam/devpulse/releases), extract `devpulse.exe`, and add its directory to `PATH`.
 
 Verify:
 
@@ -36,7 +312,7 @@ devpulse --version
 
 ### macOS / Linux
 
-Download the matching archive from GitHub Releases, extract `devpulse`, and place it on your `PATH`.
+Download the matching archive from [GitHub Releases](https://github.com/yatinannam/devpulse/releases), extract `devpulse`, and place `devpulse` on your `PATH`.
 
 Verify:
 
@@ -53,81 +329,168 @@ git clone https://github.com/yatinannam/devpulse.git
 cd devpulse
 go build -o devpulse ./cmd/devpulse
 ```
-## Quick start
+
+Source builds are primarily intended for contributors and development.
+
+---
+
+## ⚙ Configuration
+
+Configuration defaults are stored under the user's DevPulse configuration directory.
+
 ```bash
-cd my-project
-devpulse init
-devpulse traffic
-devpulse status
-devpulse recent
-devpulse doctor
-devpulse watch
-```
-
-`traffic` defaults to `http://localhost:3000` as the upstream and listens on `:9090`. Point your application/client at the proxy, generate requests, then stop with **Ctrl+C**. The session is saved locally.
-
-## Commands
-| Command | Purpose |
-| --- | --- |
-| `devpulse ports` | List local listening ports and processes |
-| `devpulse ports --watch` | Watch for port changes |
-| `devpulse traffic` | Capture HTTP traffic through the proxy |
-| `devpulse status` | Correlate services with captured traffic |
-| `devpulse doctor` | Analyze a captured session |
-| `devpulse recent` | Show the most recent captured requests |\n| `devpulse watch` | Continuously refresh service/traffic health |
-| `devpulse config` | View or change persistent defaults |
-| `devpulse version` | Print the current build version |
-
-## Getting started
-
-`devpulse init` inspects the current project, detects common project types, finds a matching local HTTP service when available, and stores the detected target as the DevPulse default.
-
-Use `devpulse help`, `devpulse --help`, or `devpulse -h` to display the command reference. Use `devpulse --version` or `devpulse -v` to print the version.
-
-## Configuration
-Configuration is stored at `~/.devpulse/config.json`.
-```bash
+devpulse config
 devpulse config --target http://localhost:8080
 devpulse config --listen :9090
 devpulse config --watch-interval 5s
 ```
 
-Environment variables:
-- `DEVPULSE_CONFIG` — override the configuration file path.
-- `DEVPULSE_SESSION` — override the traffic session path.
+Environment overrides:
 
-## Architecture
 ```text
-┌──────────────┐
-│ PortDoctor   │──→ ports/processes/frameworks
-└──────────────┘
-         │
-         ▼
-┌──────────────────────┐
-│ Service correlation  │
-└──────────────────────┘
-         ▲
-         │
-┌──────────────┐
-│ APIWatch     │──→ requests/endpoints/latency/errors
-└──────────────┘
-         │
-         ▼
-┌──────────────┐
-│ Doctor       │──→ actionable findings
-└──────────────┘
+DEVPULSE_CONFIG   custom config path
+DEVPULSE_SESSION  custom session path
 ```
 
-## Development
+---
+
+## 🔐 Security & Supply Chain
+
+DevPulse includes automated security checks in GitHub Actions:
+
+```text
+                     Pull Request / Push
+                              │
+             ┌────────────────┼─────────────────┐
+             ▼                ▼                 ▼
+          Go CI           Security             CodeQL
+             │                │                 │
+      tests + vet       govulncheck       static analysis
+                          + race
+             │                │                 │
+             └────────────────┼─────────────────┘
+                              ▼
+                    dependency review
+                              │
+                              ▼
+                         Dependabot
+```
+
+The repository also uses release checksums for published binaries.
+
+Security tooling is intended to catch dependency vulnerabilities, concurrency defects, and common source-level issues before releases.
+
+---
+
+## 📦 Release Engineering
+
+Release builds are generated from version tags through GitHub Actions and GoReleaser.
+
+Target matrix:
+
+```text
+              GoReleaser
+                  │
+        ┌─────────┼─────────┐
+        ▼         ▼         ▼
+      Linux     Windows    macOS
+      amd64      amd64     amd64
+      arm64      arm64     arm64
+```
+
+Each release publishes platform-specific archives plus a checksum manifest.
+
+---
+
+## 🧪 Development
+
+Run the local quality gates:
+
 ```bash
 go test ./...
 go vet ./...
 ```
-GitHub Actions runs both checks on pushes and pull requests to `main`.
 
-## Project status
+Security-oriented local checks can be run with:
 
-DevPulse is in active development toward **v0.2**.
+```bash
+go test -race ./...
+govulncheck ./...
+```
 
-## License
-DevPulse is licensed under the MIT License.
+GitHub Actions runs the project checks across Linux, Windows, and macOS.
+
+---
+
+## 🗺 Roadmap
+
+### v0.2 — Local Change Intelligence
+
+```text
+endpoint normalization
+        │
+        ▼
+     baseline
+        │
+        ▼
+ change detection
+        │
+        ▼
+ anomaly detection
+        │
+        ▼
+dependency correlation
+        │
+        ▼
+     timeline
+        │
+        ▼
+ actionable diagnosis
+```
+
+The goal is to make DevPulse answer a more useful question than **"what is running?"**:
+
+> **"What changed in my local environment, and what did that change affect?"**
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+Recommended contribution loop:
+
+```bash
+git checkout -b feature/<name>
+go test ./...
+go vet ./...
+git commit -m "feat(scope): describe change"
+```
+
+Keep changes focused, tested, and platform-aware.
+
+---
+
+## 👨‍💻 Author
+
+<div align="center">
+
+### Yatin Annam
+
+**Creator & Maintainer of DevPulse**
+
+Local-first tooling • Go • Developer Experience • Security Engineering
+
+[GitHub](https://github.com/yatinannam)
+
+</div>
+
+---
+
+<div align="center">
+
+**DevPulse — inspect locally. understand quickly.**
+
+Licensed under the [MIT License](LICENSE).
+
+</div>
