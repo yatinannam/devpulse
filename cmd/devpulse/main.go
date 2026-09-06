@@ -359,13 +359,14 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  init       Detect the current project and configure DevPulse")
-				fmt.Println("  ports      List local listening ports and processes")
+	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
 	fmt.Println("  doctor     Analyze a captured session")
 	fmt.Println("  recent     Show the most recent captured requests")
-			fmt.Println("  watch      Continuously refresh service/traffic health")
+	fmt.Println("  watch      Continuously refresh service/traffic health")
 	fmt.Println("  config     View or change persistent defaults")
 	fmt.Println("  version    Print the current build version")
+	fmt.Println()
+	fmt.Println("Use 'devpulse <command> --help' for command-specific flags.")
 }
-
