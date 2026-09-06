@@ -75,8 +75,16 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 	server := resp.Header.Get("Server")
 	kind := identify(resp.Header, "")
 	if kind == "HTTP service" {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-		kind = identify(resp.Header, string(body))
+		_ = resp.Body.Close()
+		getReq, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
+		if err == nil {
+			getResp, err := client.Do(getReq)
+			if err == nil {
+				body, _ := io.ReadAll(io.LimitReader(getResp.Body, 8*1024))
+				kind = identify(getResp.Header, string(body))
+				_ = getResp.Body.Close()
+			}
+		}
 	}
 	return true, kind, server
 }
