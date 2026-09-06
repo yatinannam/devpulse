@@ -13,6 +13,7 @@ import (
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/doctor"
 	"github.com/yatinannam/devpulse/internal/ports"
+	"github.com/yatinannam/devpulse/internal/project"
 	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
@@ -21,7 +22,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) == 1 {
-		statusCommand(nil)
+		printHelp()
 		return
 	}
 	switch os.Args[1] {
@@ -33,18 +34,21 @@ func main() {
 		trafficCommand(os.Args[2:])
 	case "doctor":
 		doctorCommand(os.Args[2:])
+	case "recent":
+		recentCommand(os.Args[2:])
 	case "status":
 		statusCommand(os.Args[2:])
 	case "watch":
 		watchCommand(os.Args[2:])
 	case "config":
 		configCommand(os.Args[2:])
-	case "version":
+	case "version", "-v", "--version":
 		fmt.Println("devpulse " + version)
 	case "help", "-h", "--help":
 		printHelp()
 	default:
-		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|recent|config|version|help]\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\n\n", os.Args[1])
+		printHelp()
 		os.Exit(2)
 	}
 }
