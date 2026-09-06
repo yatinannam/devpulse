@@ -63,7 +63,7 @@ func initCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	target, ok := project.SelectTarget(services)
+	target, ok := project.SelectTarget(projectInfo, services)
 	if !ok {
 		fmt.Println("DEVPULSE INIT")
 		fmt.Println("────────────────────────────────────────────────")
@@ -354,6 +354,7 @@ func printHelp() {
 	fmt.Println("Usage: devpulse <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
+	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  ports      List local listening ports and processes")
