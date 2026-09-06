@@ -147,7 +147,7 @@ The intended experience is:
 
 ---
 
-## 🏗 Architecture
+##  Architecture
 
 ```mermaid
 flowchart TD
@@ -471,26 +471,6 @@ Keep changes focused, tested, and platform-aware.
 
 ---
 
-## 👨‍Author
-
-<div align="center">
-
-### Yatin Annam
-
-**Creator & Maintainer of DevPulse**
-
-Local-first tooling • Go • Developer Experience • Security Engineering
-
-[GitHub](https://github.com/yatinannam)
-
-</div>
-
----
-
-<div align="center">
-
-**DevPulse — inspect locally. understand quickly.**
+## License
 
 Licensed under the [MIT License](LICENSE).
-
-</div>
