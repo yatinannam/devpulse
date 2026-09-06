@@ -42,7 +42,7 @@ func main() {
 	case "help", "-h", "--help":
 		printHelp()
 	default:
-		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|config|version|help]\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\nusage: devpulse [ports|traffic|doctor|status|watch|recent|config|version|help]\n", os.Args[1])
 		os.Exit(2)
 	}
 }
@@ -54,6 +54,42 @@ func loadConfig() config.Config {
 		os.Exit(1)
 	}
 	return c
+}
+
+func recentCommand(args []string) {
+	fs := flag.NewFlagSet("recent", flag.ExitOnError)
+	from := fs.String("from", sessionPath(), "traffic session to inspect")
+	n := fs.Int("n", 10, "number of recent requests to show")
+	_ = fs.Parse(args)
+
+	if *n < 1 {
+		fmt.Fprintln(os.Stderr, "devpulse: -n must be greater than 0")
+		os.Exit(2)
+	}
+
+	s, err := traffic.LoadSession(*from)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+
+	start := len(s.Requests) - *n
+	if start < 0 {
+		start = 0
+	}
+	fmt.Println("RECENT ACTIVITY")
+	fmt.Println("────────────────────────────────────────────────")
+	for i := start; i < len(s.Requests); i++ {
+		r := s.Requests[i]
+		marker := " "
+		if r.Status >= 400 || r.Latency >= 500*time.Millisecond {
+			marker = "!"
+		}
+		fmt.Printf("%s %s  %-6s %-32s %3d  %s\n", marker,
+			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
+			r.Latency.Round(time.Millisecond))
+	}
+	fmt.Printf("\nShowing %d of %d requests\n", len(s.Requests)-start, len(s.Requests))
 }
 
 func configCommand(args []string) {
@@ -267,6 +303,7 @@ func printHelp() {
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
 	fmt.Println("  doctor     Analyze a captured session")
+	fmt.Println("  recent     Show the most recent captured requests")
 	fmt.Println("  watch      Continuously refresh service/traffic health")
 	fmt.Println("  config     View or change persistent defaults")
 	fmt.Println("  version    Print the current build version")
