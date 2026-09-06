@@ -51,7 +51,7 @@ DevPulse is deliberately **local-first**: session data and configuration stay on
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 Install the binary once, put it on your `PATH`, then initialize the project:
 
@@ -89,7 +89,7 @@ devpulse -v
 
 ---
 
-## 🧭 The Developer Workflow
+## The Developer Workflow
 
 ```text
         ┌───────────────┐
@@ -130,7 +130,7 @@ The intended experience is:
 
 ---
 
-## 🔬 What DevPulse Observes
+## What DevPulse Observes
 
 | Layer | Signal | DevPulse view |
 | --- | --- | --- |
@@ -192,7 +192,7 @@ flowchart TD
 
 ---
 
-## 🛠 Command Reference
+## Command Reference
 
 | Command | Description |
 | --- | --- |
@@ -215,7 +215,7 @@ devpulse <command> --help
 
 ---
 
-## 📡 APIWatch
+## APIWatch
 
 APIWatch runs as a local reverse proxy.
 
@@ -250,7 +250,7 @@ Captured requests are persisted as a versioned JSON session.
 
 ---
 
-## 🩺 PortDoctor
+## PortDoctor
 
 PortDoctor performs platform-specific local socket inspection:
 
@@ -266,7 +266,7 @@ HTTP-capable listeners are distinguished from generic TCP listeners through boun
 
 ---
 
-## 🧠 Diagnostics
+## Diagnostics
 
 The diagnostic layer currently aggregates:
 
@@ -298,7 +298,7 @@ This data model is also the foundation for the next generation of DevPulse analy
 
 ---
 
-## 💻 Installation
+## Installation
 
 ### Windows
 
@@ -334,7 +334,7 @@ Source builds are primarily intended for contributors and development.
 
 ---
 
-## ⚙ Configuration
+## Configuration
 
 Configuration defaults are stored under the user's DevPulse configuration directory.
 
@@ -354,7 +354,7 @@ DEVPULSE_SESSION  custom session path
 
 ---
 
-## 🔐 Security & Supply Chain
+## Security & Supply Chain
 
 DevPulse includes automated security checks in GitHub Actions:
 
@@ -382,7 +382,7 @@ Security tooling is intended to catch dependency vulnerabilities, concurrency de
 
 ---
 
-## 📦 Release Engineering
+## Release Engineering
 
 Release builds are generated from version tags through GitHub Actions and GoReleaser.
 
@@ -402,7 +402,7 @@ Each release publishes platform-specific archives plus a checksum manifest.
 
 ---
 
-## 🧪 Development
+## Development
 
 Run the local quality gates:
 
@@ -422,7 +422,7 @@ GitHub Actions runs the project checks across Linux, Windows, and macOS.
 
 ---
 
-## 🗺 Roadmap
+## Roadmap
 
 ### v0.2 — Local Change Intelligence
 
@@ -471,7 +471,7 @@ Keep changes focused, tested, and platform-aware.
 
 ---
 
-## 👨‍💻 Author
+## 👨‍Author
 
 <div align="center">
 
