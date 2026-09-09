@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yatinannam/devpulse/internal/baseline"
 	"github.com/yatinannam/devpulse/internal/config"
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/doctor"
@@ -28,6 +29,8 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		initCommand(os.Args[2:])
+	case "baseline":
+		baselineCommand(os.Args[2:])
 	case "ports":
 		portsCommand(os.Args[2:])
 	case "traffic":
@@ -95,6 +98,29 @@ func initCommand(args []string) {
 	fmt.Println()
 	fmt.Println("Next: devpulse traffic")
 }
+func baselineCommand(args []string) {
+	fs := flag.NewFlagSet("baseline", flag.ExitOnError)
+	from := fs.String("from", sessionPath(), "traffic session to snapshot")
+	to := fs.String("to", baseline.Path("."), "baseline output path")
+	_ = fs.Parse(args)
+
+	s, err := traffic.LoadSession(*from)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	services, err := discovery.Discover(300 * time.Millisecond)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	if err := baseline.Save(*to, baseline.Build(services, s.Requests)); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Baseline saved: %s\n", *to)
+}
+
 func loadConfig() config.Config {
 	c, err := config.Load()
 	if err != nil {
@@ -359,6 +385,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  init       Detect the current project and configure DevPulse")
+	fmt.Println("  baseline   Capture the current environment as a baseline")
 	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
