@@ -39,9 +39,12 @@ func TestPathPrefersProjectConfig(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
 
-	if got := Path(); got != projectConfig {
-		t.Fatalf("path=%q, want %q", got, projectConfig)
-	}
+	got := Path()
+	gotEval, err := filepath.EvalSymlinks(got)
+	if err != nil { t.Fatal(err) }
+	wantEval, err := filepath.EvalSymlinks(projectConfig)
+	if err != nil { t.Fatal(err) }
+	if gotEval != wantEval { t.Fatalf("path=%q, want %q", gotEval, wantEval) }
 }
 
 func TestPathFindsProjectConfigFromNestedDirectory(t *testing.T) {
@@ -63,9 +66,12 @@ func TestPathFindsProjectConfigFromNestedDirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
 
-	if got := Path(); got != ProjectPath(root) {
-		t.Fatalf("path=%q, want %q", got, ProjectPath(root))
-	}
+	got := Path()
+	gotEval, err := filepath.EvalSymlinks(got)
+	if err != nil { t.Fatal(err) }
+	wantEval, err := filepath.EvalSymlinks(ProjectPath(root))
+	if err != nil { t.Fatal(err) }
+	if gotEval != wantEval { t.Fatalf("path=%q, want %q", gotEval, wantEval) }
 }
 
 func TestExplicitConfigOverridesProjectConfig(t *testing.T) {
