@@ -81,7 +81,7 @@ func initCommand(args []string) {
 
 	c := loadConfig()
 	c.Target = target.URL
-	if err := config.Save(c); err != nil {
+	if err := config.SaveProject(c, "."); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
