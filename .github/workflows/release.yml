@@ -34,3 +34,9 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release checksums
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/checksums.txt
+
