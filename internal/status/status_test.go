@@ -22,3 +22,40 @@ func TestGroupByService(t *testing.T) {
 		t.Fatalf("unexpected %+v", g)
 	}
 }
+
+func TestNormalizeEndpointPath(t *testing.T) {
+	cases := map[string]string{
+		"/api/users?id=1": "/api/users",
+		"/api/users?id=2": "/api/users",
+		"/api/users/123": "/api/users/:id",
+		"/api/users/456": "/api/users/:id",
+		"/api/items/550e8400-e29b-41d4-a716-446655440000": "/api/items/:id",
+		"/health": "/health",
+	}
+	for input, want := range cases {
+		if got := normalizeEndpointPath(input); got != want {
+			t.Errorf("normalizeEndpointPath(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestEndpointsAggregatesNormalizedPaths(t *testing.T) {
+	entries := []traffic.Request{
+		{Method: "GET", Path: "/api/users?id=1", Status: 200, Latency: 100 * time.Millisecond},
+		{Method: "GET", Path: "/api/users?id=2", Status: 500, Latency: 300 * time.Millisecond},
+		{Method: "GET", Path: "/api/users/123", Status: 200, Latency: 200 * time.Millisecond},
+	}
+	got := Endpoints(entries)
+	if len(got) != 2 {
+		t.Fatalf("got %d endpoints, want 2: %+v", len(got), got)
+	}
+	var users Endpoint
+	for _, e := range got {
+		if e.Path == "/api/users" {
+			users = e
+		}
+	}
+	if users.Count != 2 || users.Errors != 1 || users.Average != 200*time.Millisecond {
+		t.Fatalf("normalized query endpoint = %+v", users)
+	}
+}
