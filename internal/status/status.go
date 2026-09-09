@@ -2,6 +2,7 @@ package status
 
 import (
 	"fmt"
+	"strings"
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/traffic"
 	"sort"
@@ -40,13 +41,64 @@ type Endpoint struct {
 	Average       time.Duration
 }
 
+func normalizeEndpointPath(raw string) string {
+	path := raw
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	if path == "" {
+		return "/"
+	}
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		if isUUID(part) || isNumeric(part) {
+			parts[i] = ":id"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if r != '-' {
+				return false
+			}
+			continue
+		}
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func Endpoints(entries []traffic.Request) []Endpoint {
 	m := map[string]*Endpoint{}
 	for _, e := range entries {
-		key := e.Method + " " + e.Path
+		path := normalizeEndpointPath(e.Path)
+		key := e.Method + " " + path
 		x := m[key]
 		if x == nil {
-			x = &Endpoint{Method: e.Method, Path: e.Path}
+			x = &Endpoint{Method: e.Method, Path: path}
 			m[key] = x
 		}
 		x.Count++
