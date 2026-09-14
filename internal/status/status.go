@@ -2,16 +2,21 @@ package status
 
 import (
 	"fmt"
-	"strings"
-	"github.com/yatinannam/devpulse/internal/discovery"
-	"github.com/yatinannam/devpulse/internal/traffic"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/yatinannam/devpulse/internal/discovery"
+	"github.com/yatinannam/devpulse/internal/metrics"
+	"github.com/yatinannam/devpulse/internal/traffic"
 )
 
 type Summary struct {
 	Total, Errors, Slow int
 	Average             time.Duration
+	P50                 time.Duration
+	P95                 time.Duration
+	P99                 time.Duration
 	Findings            int
 }
 
@@ -22,8 +27,10 @@ func Build(entries []traffic.Request) Summary {
 		return s
 	}
 	var total time.Duration
+	latencies := make([]time.Duration, 0, len(entries))
 	for _, e := range entries {
 		total += e.Latency
+		latencies = append(latencies, e.Latency)
 		if e.Status >= 400 {
 			s.Errors++
 		}
@@ -32,6 +39,7 @@ func Build(entries []traffic.Request) Summary {
 		}
 	}
 	s.Average = total / time.Duration(len(entries))
+	s.P50, s.P95, s.P99 = metrics.Percentiles(latencies)
 	return s
 }
 
@@ -144,6 +152,7 @@ func GroupByService(services []discovery.Service, entries []traffic.Request) []S
 	}
 	return out
 }
+
 func Health(g ServiceTraffic) string {
 	if !g.Service.HTTP {
 		return "running"
@@ -156,6 +165,7 @@ func Health(g ServiceTraffic) string {
 	}
 	return "healthy"
 }
+
 func PrintServices(groups []ServiceTraffic) {
 	fmt.Println("SERVICES")
 	for _, g := range groups {
@@ -172,6 +182,7 @@ func PrintServices(groups []ServiceTraffic) {
 		}
 	}
 }
+
 func healthMarker(h string) string {
 	switch h {
 	case "healthy":
