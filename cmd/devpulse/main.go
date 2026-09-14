@@ -12,7 +12,9 @@ import (
 	"github.com/yatinannam/devpulse/internal/baseline"
 	"github.com/yatinannam/devpulse/internal/config"
 	"github.com/yatinannam/devpulse/internal/discovery"
+	"github.com/yatinannam/devpulse/internal/diff"
 	"github.com/yatinannam/devpulse/internal/doctor"
+	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/project"
 	"github.com/yatinannam/devpulse/internal/status"
@@ -31,6 +33,8 @@ func main() {
 		initCommand(os.Args[2:])
 	case "baseline":
 		baselineCommand(os.Args[2:])
+	case "diff":
+		diffCommand(os.Args[2:])
 	case "ports":
 		portsCommand(os.Args[2:])
 	case "traffic":
@@ -98,6 +102,7 @@ func initCommand(args []string) {
 	fmt.Println()
 	fmt.Println("Next: devpulse traffic")
 }
+
 func baselineCommand(args []string) {
 	fs := flag.NewFlagSet("baseline", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to snapshot")
@@ -119,6 +124,48 @@ func baselineCommand(args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Baseline saved: %s\n", *to)
+}
+
+func diffCommand(args []string) {
+	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	from := fs.String("from", baseline.Path("."), "baseline snapshot to compare against")
+	session := fs.String("session", sessionPath(), "current traffic session")
+	jsonOutput := fs.Bool("json", false, "print changes as JSON")
+	_ = fs.Parse(args)
+
+	base, err := baseline.Load(*from)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	trafficSession, err := traffic.LoadSession(*session)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	services, err := discovery.Discover(300 * time.Millisecond)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		os.Exit(1)
+	}
+	current := baseline.Build(services, trafficSession.Requests)
+	changes := diff.Compare(base, current)
+	if *jsonOutput {
+		if err := output.WriteJSON(os.Stdout, changes); err != nil {
+			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	fmt.Println("DEVPULSE DIFF")
+	fmt.Println("────────────────────────────────────────────────")
+	if len(changes) == 0 {
+		fmt.Println("No changes detected.")
+		return
+	}
+	for _, change := range changes {
+		fmt.Printf("[%s] %s: %s\n", change.Kind, change.Subject, change.Message)
+	}
 }
 
 func loadConfig() config.Config {
@@ -175,7 +222,6 @@ func recentCommand(args []string) {
 	}
 	fmt.Printf("\nShowing %d of %d requests\n", len(recent), len(s.Requests))
 }
-
 
 func configCommand(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
@@ -386,6 +432,7 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  baseline   Capture the current environment as a baseline")
+	fmt.Println("  diff       Compare the current environment with the baseline")
 	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
