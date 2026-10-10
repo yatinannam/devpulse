@@ -30,7 +30,7 @@ func TestCompareFindsServiceAndLatencyChanges(t *testing.T) {
 	if len(findings) < 4 {
 		t.Fatalf("expected service, error-rate, and latency findings; got %+v", findings)
 	}
-	if findings[0].Severity != string(SeverityError) {
+	if findings[0].Severity != SeverityError {
 		t.Fatalf("expected highest severity first, got %+v", findings[0])
 	}
 }
