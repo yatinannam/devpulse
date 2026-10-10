@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"math"
 	"sort"
 	"time"
 )
@@ -14,7 +15,10 @@ func Percentiles(values []time.Duration) (p50, p95, p99 time.Duration) {
 	values = append([]time.Duration(nil), values...)
 	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 	pick := func(percent float64) time.Duration {
-		idx := int(percent*float64(len(values)-1) + 0.5)
+		idx := int(math.Ceil(percent*float64(len(values)))) - 1
+		if idx < 0 {
+			idx = 0
+		}
 		return values[idx]
 	}
 	return pick(0.50), pick(0.95), pick(0.99)
