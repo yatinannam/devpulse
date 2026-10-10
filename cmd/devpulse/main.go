@@ -362,7 +362,8 @@ func statusCommand(args []string) {
 	fmt.Printf("\nSession: %s\n", *from)
 	summary := status.Build(s.Requests)
 	fmt.Printf("Requests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-		summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),\n\t\t\tsummary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
+		summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
+			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
 }
 
 func watchCommand(args []string) {
@@ -399,7 +400,8 @@ func watchCommand(args []string) {
 		status.PrintServices(status.GroupByService(services, s.Requests))
 		summary := status.Build(s.Requests)
 		fmt.Printf("\nRequests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-			summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),\n\t\t\tsummary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
+			summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
+			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
 		fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\n",
 			time.Now().Format("15:04:05"), *interval)
 	}
