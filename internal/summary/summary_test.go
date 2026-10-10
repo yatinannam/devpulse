@@ -1,6 +1,7 @@
 package summary
 
 import (
+    "encoding/json"
     "testing"
     "time"
 
@@ -35,4 +36,21 @@ func TestSlowestDoesNotMutateInput(t *testing.T) {
     if entries[0].Latency != 10 {
         t.Fatalf("input slice was reordered")
     }
+}
+
+func TestReportJSONUsesStableFieldNames(t *testing.T) {
+	report := Build([]traffic.Request{{Status: 500, Latency: 25 * time.Millisecond}})
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	for _, key := range []string{"total", "errors", "error_rate", "average", "p50", "p95", "p99"} {
+		if _, ok := decoded[key]; !ok {
+			t.Errorf("missing JSON field %q in %s", key, data)
+		}
+	}
 }
