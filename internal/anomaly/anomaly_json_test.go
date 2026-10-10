@@ -15,7 +15,7 @@ func TestFindingJSONIncludesCoreFields(t *testing.T) {
     if err := json.Unmarshal(data, &decoded); err != nil {
         t.Fatalf("unmarshal finding: %v", err)
     }
-    for _, key := range []string{"Severity", "Kind", "Subject", "Message"} {
+    for _, key := range []string{"severity", "kind", "subject", "message"} {
         if _, ok := decoded[key]; !ok {
             t.Fatalf("missing JSON field %q in %s", key, data)
         }

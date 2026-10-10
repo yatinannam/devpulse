@@ -9,13 +9,13 @@ import (
 )
 
 type Report struct {
-    Total      int
-    Errors     int
-    ErrorRate  float64
-    Average    time.Duration
-    P50        time.Duration
-    P95        time.Duration
-    P99        time.Duration
+    Total     int           `json:"total"`
+    Errors    int           `json:"errors"`
+    ErrorRate float64       `json:"error_rate"`
+    Average   time.Duration `json:"average"`
+    P50       time.Duration `json:"p50"`
+    P95       time.Duration `json:"p95"`
+    P99       time.Duration `json:"p99"`
 }
 
 func Build(entries []traffic.Request) Report {

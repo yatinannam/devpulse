@@ -16,10 +16,10 @@ const (
 )
 
 type Finding struct {
-	Severity Severity
-	Kind     string
-	Subject  string
-	Message  string
+	Severity Severity `json:"severity"`
+	Kind     string   `json:"kind"`
+	Subject  string   `json:"subject"`
+	Message  string   `json:"message"`
 }
 
 func Compare(base, current baseline.Snapshot) []Finding {

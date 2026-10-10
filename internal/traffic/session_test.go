@@ -30,3 +30,29 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected path: %q", s.Requests[0].Path)
 	}
 }
+
+func TestSaveSessionReplacesExistingFileAndCleansTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.json")
+	if err := SaveSession(path, []Request{{Path: "/old"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSession(path, []Request{{Path: "/new"}}); err != nil {
+		t.Fatalf("replace existing session: %v", err)
+	}
+
+	got, err := LoadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Requests) != 1 || got.Requests[0].Path != "/new" {
+		t.Fatalf("got requests %#v, want only /new", got.Requests)
+	}
+	temps, err := filepath.Glob(filepath.Join(dir, ".session-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(temps) != 0 {
+		t.Fatalf("temporary session files leaked: %#v", temps)
+	}
+}
