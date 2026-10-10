@@ -24,11 +24,25 @@ func SaveSession(path string, entries []Request) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create session directory: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	tmp, err := os.CreateTemp(dir, ".session-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary session: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure temporary session: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write session: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary session: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 	return nil
