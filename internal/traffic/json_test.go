@@ -16,12 +16,12 @@ func TestRequestJSONUsesStableFieldNames(t *testing.T) {
 		t.Fatalf("marshal request: %v", err)
 	}
 	text := string(data)
-	for _, key := range []string{\`"time"\`, \`"method"\`, \`"path"\`, \`"status"\`, \`"latency"\`, \`"bytes"\`, \`"targetHost"\`, \`"targetPort"\`} {
+	for _, key := range []string{`"time"`, `"method"`, `"path"`, `"status"`, `"latency"`, `"bytes"`, `"targetHost"`, `"targetPort"`} {
 		if !strings.Contains(text, key) {
 			t.Errorf("JSON %s does not contain %s", text, key)
 		}
 	}
-	for _, key := range []string{\`"TargetHost"\`, \`"TargetPort"\`} {
+	for _, key := range []string{`"TargetHost"`, `"TargetPort"`} {
 		if strings.Contains(text, key) {
 			t.Errorf("JSON contains unstable field %s: %s", key, text)
 		}
@@ -29,7 +29,7 @@ func TestRequestJSONUsesStableFieldNames(t *testing.T) {
 }
 
 func TestLoadSessionAcceptsLegacyCapitalizedKeys(t *testing.T) {
-	const legacy = \`{
+	const legacy = `{
 		"Version": 1,
 		"CreatedAt": "2026-10-01T12:00:00Z",
 		"Requests": [{
@@ -42,7 +42,7 @@ func TestLoadSessionAcceptsLegacyCapitalizedKeys(t *testing.T) {
 			"TargetHost": "localhost",
 			"TargetPort": 3000
 		}]
-	}\`
+	}`
 	var session Session
 	if err := json.Unmarshal([]byte(legacy), &session); err != nil {
 		t.Fatalf("decode legacy session: %v", err)

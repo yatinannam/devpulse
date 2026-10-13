@@ -226,7 +226,7 @@ func recentCommand(args []string) {
 			Requests []traffic.Request `json:"requests"`
 		}{Total: len(s.Requests), Shown: len(ordered), Requests: ordered}
 		if err := output.WriteJSON(os.Stdout, payload); err != nil {
-			fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
 		return
