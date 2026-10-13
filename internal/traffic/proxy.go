@@ -13,14 +13,14 @@ import (
 )
 
 type Request struct {
-	Time       time.Time
-	Method     string
-	Path       string
-	Status     int
-	Latency    time.Duration
-	Bytes      int64
-	TargetHost string
-	TargetPort int
+	Time       time.Time     `json:"time"`
+	Method     string        `json:"method"`
+	Path       string        `json:"path"`
+	Status     int           `json:"status"`
+	Latency    time.Duration `json:"latency"`
+	Bytes      int64         `json:"bytes"`
+	TargetHost string        `json:"targetHost"`
+	TargetPort int           `json:"targetPort"`
 }
 type Recorder struct {
 	mu      sync.RWMutex

@@ -9,9 +9,9 @@ import (
 )
 
 type Session struct {
-	Version   int
-	CreatedAt time.Time
-	Requests  []Request
+	Version   int       `json:"version"`
+	CreatedAt time.Time `json:"createdAt"`
+	Requests  []Request `json:"requests"`
 }
 
 func SaveSession(path string, entries []Request) error {

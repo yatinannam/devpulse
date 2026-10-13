@@ -35,6 +35,12 @@ func main() {
 		baselineCommand(os.Args[2:])
 	case "diff":
 		diffCommand(os.Args[2:])
+	case "summary":
+		summaryCommand(os.Args[2:])
+	case "timeline":
+		timelineCommand(os.Args[2:])
+	case "anomalies":
+		anomaliesCommand(os.Args[2:])
 	case "ports":
 		portsCommand(os.Args[2:])
 	case "traffic":
@@ -194,6 +200,7 @@ func recentCommand(args []string) {
 	fs := flag.NewFlagSet("recent", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to inspect")
 	n := fs.Int("n", 10, "number of recent requests to show")
+	jsonOutput := fs.Bool("json", false, "print recent requests as JSON")
 	_ = fs.Parse(args)
 
 	if *n < 1 {
@@ -208,6 +215,22 @@ func recentCommand(args []string) {
 	}
 
 	recent := recentRequests(s.Requests, *n)
+	if *jsonOutput {
+		ordered := make([]traffic.Request, len(recent))
+		for i := range recent {
+			ordered[i] = recent[len(recent)-1-i]
+		}
+		payload := struct {
+			Total    int               `json:"total"`
+			Shown    int               `json:"shown"`
+			Requests []traffic.Request `json:"requests"`
+		}{Total: len(s.Requests), Shown: len(ordered), Requests: ordered}
+		if err := output.WriteJSON(os.Stdout, payload); err != nil {
+			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Println("RECENT ACTIVITY")
 	fmt.Println("────────────────────────────────────────────────")
 	for i := len(recent) - 1; i >= 0; i-- {
@@ -435,6 +458,9 @@ func printHelp() {
 	fmt.Println("  init       Detect the current project and configure DevPulse")
 	fmt.Println("  baseline   Capture the current environment as a baseline")
 	fmt.Println("  diff       Compare the current environment with the baseline")
+	fmt.Println("  summary    Summarize latency, errors, and slowest requests")
+	fmt.Println("  timeline   Group captured traffic into chronological buckets")
+	fmt.Println("  anomalies  Detect regressions against a saved baseline")
 	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")

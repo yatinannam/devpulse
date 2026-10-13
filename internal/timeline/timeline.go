@@ -8,10 +8,10 @@ import (
 )
 
 type Bucket struct {
-	Start   time.Time
-	Requests int
-	Errors   int
-	Average time.Duration
+	Start    time.Time     `json:"start"`
+	Requests int           `json:"requests"`
+	Errors   int           `json:"errors"`
+	Average  time.Duration `json:"average_ns"`
 }
 
 // Build groups captured requests into fixed-size chronological buckets.
