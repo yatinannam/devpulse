@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -438,15 +439,21 @@ func watchCommand(args []string) {
 func doctorCommand(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to analyze")
+	profileName := fs.String("profile", string(doctor.ProfileDefault), "diagnostic thresholds: default, strict, permissive")
 	_ = fs.Parse(args)
 
+	profile := doctor.Profile(strings.ToLower(strings.TrimSpace(*profileName)))
+	if _, err := doctor.ThresholdsFor(profile); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
+		os.Exit(2)
+	}
 	s, err := traffic.LoadSession(*from)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Session: %s · %d requests\n\n", *from, len(s.Requests))
-	doctor.Print(doctor.Analyze(s.Requests))
+	fmt.Printf("Session: %s | Requests: %d | Profile: %s\\n\\n", *from, len(s.Requests), profile)
+	doctor.Print(doctor.AnalyzeWithProfile(s.Requests, profile))
 }
 
 func printHelp() {
