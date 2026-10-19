@@ -203,6 +203,14 @@ flowchart TD
 | `devpulse status` | Correlate discovered services with captured traffic |
 | `devpulse recent` | Show the most recent captured requests |
 | `devpulse doctor` | Analyze a captured session for errors and suspicious patterns |
+| `devpulse doctor --profile strict` | Apply lower latency and duplicate-request thresholds |
+| `devpulse doctor --profile permissive` | Report only higher-severity latency/status conditions |
+| `devpulse doctor --json` | Emit structured findings for scripts and CI |
+| `devpulse baseline` | Save a versioned snapshot of services and traffic |
+| `devpulse diff --json` | Compare the current environment against a saved baseline |
+| `devpulse summary --json` | Export aggregate latency and error-rate metrics |
+| `devpulse timeline --bucket 5m --json` | Export chronological request buckets |
+| `devpulse anomalies --json` | Emit baseline regression findings as JSON |
 | `devpulse watch` | Continuously refresh local service/traffic state |
 | `devpulse config` | Read or update persistent defaults |
 | `devpulse version` | Print the current build version |
@@ -212,6 +220,31 @@ Every command is intended to expose command-specific flags through:
 ```bash
 devpulse <command> --help
 ```
+
+
+### Diagnostic profiles and automation
+
+The `doctor` command supports three deterministic threshold profiles:
+
+| Profile | Slow-request threshold | Error status threshold | Duplicate-request minimum |
+| --- | ---: | ---: | ---: |
+| `default` | 500 ms | 400 | 3 requests |
+| `strict` | 250 ms | 400 | 2 requests |
+| `permissive` | 1 s | 500 | 4 requests |
+
+Duplicate-request detection groups requests by method and raw path, sorts them by capture time, and checks whether the configured count occurred inside the profile's time window. Profiles change diagnostic thresholds; they do not change recorded traffic or mutate session files.
+
+Examples:
+
+```bash
+devpulse doctor --profile strict
+devpulse doctor --profile permissive --from ./fixtures/session.json
+devpulse doctor --json > findings.json
+```
+
+JSON output is intended for scripts, local dashboards, and CI integrations. The doctor envelope contains the session path, selected profile, request count, and a list of findings. Each finding includes `level`, `title`, `detail`, and `advice`.
+
+See [docs/architecture.md](docs/architecture.md) for the runtime data flow, session schema, baseline comparison model, and known diagnostic boundaries.
 
 ---
 
