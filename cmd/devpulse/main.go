@@ -440,6 +440,7 @@ func doctorCommand(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to analyze")
 	profileName := fs.String("profile", string(doctor.ProfileDefault), "diagnostic thresholds: default, strict, permissive")
+	jsonOutput := fs.Bool("json", false, "print diagnostic findings as JSON")
 	_ = fs.Parse(args)
 
 	profile := doctor.Profile(strings.ToLower(strings.TrimSpace(*profileName)))
@@ -452,8 +453,16 @@ func doctorCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
 		os.Exit(1)
 	}
+	findings := doctor.AnalyzeWithProfile(s.Requests, profile)
+	if *jsonOutput {
+		if err := output.WriteJSON(os.Stdout, struct { Session string `json:"session"`; Profile doctor.Profile `json:"profile"`; Requests int `json:"requests"`; Findings []doctor.Finding `json:"findings"` }{*from, profile, len(s.Requests), findings}); err != nil {
+			fmt.Fprintf(os.Stderr, "devpulse: %v\\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Printf("Session: %s | Requests: %d | Profile: %s\\n\\n", *from, len(s.Requests), profile)
-	doctor.Print(doctor.AnalyzeWithProfile(s.Requests, profile))
+	doctor.Print(findings)
 }
 
 func printHelp() {
