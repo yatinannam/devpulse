@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -17,9 +18,13 @@ type validatePayload struct {
 }
 
 func runValidate(path string, jsonOutput bool, out io.Writer) (int, error) {
-	s, err := traffic.LoadSession(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return 1, fmt.Errorf("load session: %w", err)
+		return 1, fmt.Errorf("read session: %w", err)
+	}
+	var s traffic.Session
+	if err := json.Unmarshal(data, &s); err != nil {
+		return 1, fmt.Errorf("decode session: %w", err)
 	}
 	report := sessioncheck.Validate(s)
 	if jsonOutput {
