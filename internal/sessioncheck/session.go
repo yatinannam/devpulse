@@ -49,6 +49,9 @@ func Validate(s traffic.Session) Report {
 		if req.Latency < 0 {
 			add(Issue{Request: n, Field: "latency", Code: "negative_latency", Message: "request latency must not be negative"})
 		}
+		if strings.TrimSpace(req.TargetHost) == "" {
+			add(Issue{Request: n, Field: "targetHost", Code: "missing_target_host", Message: "target host must not be empty"})
+		}
 		if req.TargetPort < 1 || req.TargetPort > 65535 {
 			add(Issue{Request: n, Field: "targetPort", Code: "invalid_target_port", Message: "target port must be between 1 and 65535"})
 		}
