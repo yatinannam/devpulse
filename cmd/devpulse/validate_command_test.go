@@ -53,3 +53,11 @@ func TestRunValidateTextIncludesIssueDetails(t *testing.T) {
 	if err != nil || code != 1 { t.Fatalf("runValidate = (%d, %v)", code, err) }
 	if !bytes.Contains(out.Bytes(), []byte("unsupported_version")) { t.Fatalf("expected issue code in output: %s", out.String()) }
 }
+
+func TestRunValidateReportsUnreadableSession(t *testing.T) {
+	var out bytes.Buffer
+	code, err := runValidate(filepath.Join(t.TempDir(), "missing.json"), true, &out)
+	if err == nil || code != 1 {
+		t.Fatalf("runValidate = (%d, %v), want load error and exit code 1", code, err)
+	}
+}
