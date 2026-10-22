@@ -211,6 +211,8 @@ flowchart TD
 | `devpulse summary --json` | Export aggregate latency and error-rate metrics |
 | `devpulse timeline --bucket 5m --json` | Export chronological request buckets |
 | `devpulse anomalies --json` | Emit baseline regression findings as JSON |
+| `devpulse validate` | Validate session schema and request invariants |
+| `devpulse validate --json` | Export a machine-readable validation report |
 | `devpulse watch` | Continuously refresh local service/traffic state |
 | `devpulse config` | Read or update persistent defaults |
 | `devpulse version` | Print the current build version |
@@ -244,7 +246,7 @@ devpulse doctor --json > findings.json
 
 JSON output is intended for scripts, local dashboards, and CI integrations. The doctor envelope contains the session path, selected profile, request count, and a list of findings. Each finding includes `level`, `title`, `detail`, and `advice`.
 
-See [docs/architecture.md](docs/architecture.md) for the runtime data flow, session schema, baseline comparison model, and known diagnostic boundaries.
+See [docs/architecture.md](docs/architecture.md) for the runtime data flow, [docs/session-validation.md](docs/session-validation.md) for validation rules, and [docs/session-format.md](docs/session-format.md) for the persisted JSON schema.
 
 ---
 
@@ -279,7 +281,7 @@ Example:
 devpulse traffic --target http://localhost:8080 --listen :9090
 ```
 
-Captured requests are persisted as a versioned JSON session.
+Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation.
 
 ---
 
