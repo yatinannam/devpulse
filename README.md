@@ -1,7 +1,6 @@
-# DevPulse
-
 <div align="center">
 
+# DevPulse
 ### Local Development Observability for the Terminal
 
 **Know what is running. See what is receiving traffic. Find what needs attention.**
