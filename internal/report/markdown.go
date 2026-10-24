@@ -54,6 +54,15 @@ func Render(w io.Writer, r Report) error {
 			if _, err := fmt.Fprintf(w, "| %d | %d |\n", status.Status, status.Count); err != nil { return err }
 		}
 	}
+	if _, err := fmt.Fprint(w, "\n## Diagnostic Findings\n\n"); err != nil { return err }
+	if len(r.Findings) == 0 {
+		if _, err := fmt.Fprintln(w, "No obvious HTTP issues detected."); err != nil { return err }
+	} else {
+		for _, finding := range r.Findings {
+			if _, err := fmt.Fprintf(w, "- **%s — %s:** %s\n  - Recommendation: %s\n",
+				escapeCell(finding.Level), escapeCell(finding.Title), escapeCell(finding.Detail), escapeCell(finding.Advice)); err != nil { return err }
+		}
+	}
 	return nil
 }
 
