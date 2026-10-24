@@ -47,7 +47,7 @@ func Build(session traffic.Session, opts Options) Report {
 	if generated.IsZero() { generated = time.Now() }
 	return Report{
 		Title: title, SessionPath: opts.SessionPath, SessionCreatedAt: session.CreatedAt,
-		GeneratedAt: generated, Summary: summary.Build(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
+		GeneratedAt: generated, Summary: summary.Build(session.Requests), Slowest: summary.Slowest(session.Requests, max(0, opts.Top)), Findings: doctor.Analyze(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
 	}
 }
 
