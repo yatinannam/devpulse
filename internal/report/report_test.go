@@ -79,3 +79,26 @@ func TestBuildEmptySessionHasEmptyCollections(t *testing.T) {
 		t.Fatalf("unexpected empty report: %+v", got)
 	}
 }
+
+func TestRenderEscapesMarkdownTableCells(t *testing.T) {
+	session := sampleSession()
+	session.Requests[0].Path = "/search?q=a|b"
+	session.Requests[0].Method = "GET\nInjected"
+	got := Build(session, Options{Top: 1, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
+	var out bytes.Buffer
+	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	text := out.String()
+	if !bytes.Contains(out.Bytes(), []byte("/search?q=a\\|b")) {
+		t.Fatalf("pipe was not escaped: %s", text)
+	}
+	if bytes.Contains(out.Bytes(), []byte("GET\nInjected")) {
+		t.Fatalf("newline escaped into table output: %s", text)
+	}
+}
+
+func TestBuildDefaultsTitleAndClampsNegativeTop(t *testing.T) {
+	got := Build(sampleSession(), Options{Top: -1})
+	if got.Title != "DevPulse Traffic Report" || len(got.Slowest) != 0 {
+		t.Fatalf("unexpected defaults: title=%q slowest=%d", got.Title, len(got.Slowest))
+	}
+}
