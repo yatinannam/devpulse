@@ -39,3 +39,28 @@ func TestRenderIncludesSections(t *testing.T) {
 		if !bytes.Contains(out.Bytes(), []byte(want)) { t.Errorf("report missing %q", want) }
 	}
 }
+
+func TestBuildEndpointsSortedByVolumeThenErrors(t *testing.T) {
+	got := Build(sampleSession(), Options{Top: 5})
+	if len(got.Endpoints) != 2 { t.Fatalf("got %d endpoints, want 2", len(got.Endpoints)) }
+	if got.Endpoints[0].Path != "/api/items" || got.Endpoints[0].Requests != 2 || got.Endpoints[0].Errors != 1 {
+		t.Fatalf("unexpected top endpoint: %+v", got.Endpoints[0])
+	}
+	if got.Endpoints[0].Average != 450*time.Millisecond || got.Endpoints[0].ErrorRate != 0.5 {
+		t.Fatalf("unexpected endpoint metrics: %+v", got.Endpoints[0])
+	}
+}
+
+func TestBuildEndpointOrderIsDeterministicForTies(t *testing.T) {
+	session := sampleSession()
+	session.Requests = append(session.Requests,
+		traffic.Request{Time: session.CreatedAt, Method: "POST", Path: "/api/a", Status: 200, Latency: time.Millisecond},
+		traffic.Request{Time: session.CreatedAt, Method: "GET", Path: "/api/a", Status: 200, Latency: time.Millisecond})
+	got := Build(session, Options{Top: 5})
+	for i := 1; i < len(got.Endpoints); i++ {
+		prev, curr := got.Endpoints[i-1], got.Endpoints[i]
+		if prev.Requests == curr.Requests && prev.Errors == curr.Errors && prev.Path > curr.Path {
+			t.Fatalf("path order is not stable: %+v", got.Endpoints)
+		}
+	}
+}
