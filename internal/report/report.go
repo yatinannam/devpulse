@@ -47,7 +47,7 @@ func Build(session traffic.Session, opts Options) Report {
 	if generated.IsZero() { generated = time.Now() }
 	return Report{
 		Title: title, SessionPath: opts.SessionPath, SessionCreatedAt: session.CreatedAt,
-		GeneratedAt: generated, Summary: summary.Build(session.Requests), Endpoints: buildEndpoints(session.Requests),
+		GeneratedAt: generated, Summary: summary.Build(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
 	}
 }
 
@@ -79,5 +79,14 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 		if out[i].Path != out[j].Path { return out[i].Path < out[j].Path }
 		return out[i].Method < out[j].Method
 	})
+	return out
+}
+
+func buildStatusCodes(entries []traffic.Request) []StatusCount {
+	counts := make(map[int]int)
+	for _, entry := range entries { counts[entry.Status]++ }
+	out := make([]StatusCount, 0, len(counts))
+	for status, count := range counts { out = append(out, StatusCount{Status: status, Count: count}) }
+	sort.Slice(out, func(i, j int) bool { return out[i].Status < out[j].Status })
 	return out
 }
