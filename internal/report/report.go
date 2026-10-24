@@ -1,6 +1,7 @@
 package report
 
 import (
+	"sort"
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/doctor"
@@ -72,5 +73,11 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 		endpoint.ErrorRate = float64(endpoint.Errors) / float64(endpoint.Requests)
 		out = append(out, *endpoint)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Requests != out[j].Requests { return out[i].Requests > out[j].Requests }
+		if out[i].Errors != out[j].Errors { return out[i].Errors > out[j].Errors }
+		if out[i].Path != out[j].Path { return out[i].Path < out[j].Path }
+		return out[i].Method < out[j].Method
+	})
 	return out
 }
