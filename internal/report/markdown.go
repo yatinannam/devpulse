@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -25,6 +26,16 @@ func Render(w io.Writer, r Report) error {
 	for _, row := range rows {
 		if _, err := fmt.Fprintf(w, "| %s | %s |\n", row[0], row[1]); err != nil { return err }
 	}
+	if _, err := fmt.Fprint(w, "\n## Top Endpoints\n\n| Method | Path | Requests | Errors | Error rate | Average latency |\n| --- | --- | ---: | ---: | ---: | ---: |\n"); err != nil { return err }
+	if len(r.Endpoints) == 0 {
+		if _, err := fmt.Fprintln(w, "| — | No requests | 0 | 0 | 0.0% | 0s |"); err != nil { return err }
+	} else {
+		for _, endpoint := range r.Endpoints {
+			if _, err := fmt.Fprintf(w, "| %s | %s | %d | %d | %.1f%% | %s |\n",
+				escapeCell(endpoint.Method), escapeCell(endpoint.Path), endpoint.Requests, endpoint.Errors,
+				endpoint.ErrorRate*100, endpoint.Average.Round(time.Millisecond)); err != nil { return err }
+		}
+	}
 	if _, err := fmt.Fprint(w, "\n## HTTP Status Codes\n\n| Status | Requests |\n| ---: | ---: |\n"); err != nil { return err }
 	if len(r.StatusCodes) == 0 {
 		if _, err := fmt.Fprintln(w, "| — | 0 |"); err != nil { return err }
@@ -34,6 +45,10 @@ func Render(w io.Writer, r Report) error {
 		}
 	}
 	return nil
+}
+
+func escapeCell(s string) string {
+	return strings.NewReplacer("\\", "\\\\", "|", "\\|", "\r", " ", "\n", " ").Replace(s)
 }
 
 func formatTime(t time.Time) string {
