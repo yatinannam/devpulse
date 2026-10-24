@@ -36,6 +36,16 @@ func Render(w io.Writer, r Report) error {
 				endpoint.ErrorRate*100, endpoint.Average.Round(time.Millisecond)); err != nil { return err }
 		}
 	}
+	if _, err := fmt.Fprint(w, "\n## Slowest Requests\n\n| # | Time | Method | Path | Status | Latency |\n| ---: | --- | --- | --- | ---: | ---: |\n"); err != nil { return err }
+	if len(r.Slowest) == 0 {
+		if _, err := fmt.Fprintln(w, "| — | — | — | No requests | — | — |"); err != nil { return err }
+	} else {
+		for i, request := range r.Slowest {
+			if _, err := fmt.Fprintf(w, "| %d | %s | %s | %s | %d | %s |\n",
+				i+1, formatTime(request.Time), escapeCell(request.Method), escapeCell(request.Path),
+				request.Status, request.Latency.Round(time.Millisecond)); err != nil { return err }
+		}
+	}
 	if _, err := fmt.Fprint(w, "\n## HTTP Status Codes\n\n| Status | Requests |\n| ---: | ---: |\n"); err != nil { return err }
 	if len(r.StatusCodes) == 0 {
 		if _, err := fmt.Fprintln(w, "| — | 0 |"); err != nil { return err }
