@@ -64,3 +64,18 @@ func TestBuildEndpointOrderIsDeterministicForTies(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildStatusCodesSortedAndCounted(t *testing.T) {
+	got := Build(sampleSession(), Options{Top: 0})
+	if len(got.StatusCodes) != 2 || got.StatusCodes[0] != (StatusCount{Status: 200, Count: 2}) || got.StatusCodes[1] != (StatusCount{Status: 500, Count: 1}) {
+		t.Fatalf("unexpected status distribution: %+v", got.StatusCodes)
+	}
+	if len(got.Slowest) != 0 { t.Fatalf("Top=0 should disable slowest list, got %+v", got.Slowest) }
+}
+
+func TestBuildEmptySessionHasEmptyCollections(t *testing.T) {
+	got := Build(traffic.Session{}, Options{Top: 5})
+	if got.Summary.Total != 0 || len(got.StatusCodes) != 0 || len(got.Endpoints) != 0 || len(got.Slowest) != 0 || len(got.Findings) != 0 {
+		t.Fatalf("unexpected empty report: %+v", got)
+	}
+}
