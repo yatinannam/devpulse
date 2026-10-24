@@ -46,6 +46,31 @@ func Build(session traffic.Session, opts Options) Report {
 	if generated.IsZero() { generated = time.Now() }
 	return Report{
 		Title: title, SessionPath: opts.SessionPath, SessionCreatedAt: session.CreatedAt,
-		GeneratedAt: generated, Summary: summary.Build(session.Requests),
+		GeneratedAt: generated, Summary: summary.Build(session.Requests), Endpoints: buildEndpoints(session.Requests),
 	}
+}
+
+type endpointKey struct { method, path string }
+
+func buildEndpoints(entries []traffic.Request) []Endpoint {
+	groups := make(map[endpointKey]*Endpoint)
+	totals := make(map[endpointKey]time.Duration)
+	for _, entry := range entries {
+		key := endpointKey{entry.Method, entry.Path}
+		endpoint := groups[key]
+		if endpoint == nil {
+			endpoint = &Endpoint{Method: entry.Method, Path: entry.Path}
+			groups[key] = endpoint
+		}
+		endpoint.Requests++
+		if entry.Status >= 400 { endpoint.Errors++ }
+		totals[key] += entry.Latency
+	}
+	out := make([]Endpoint, 0, len(groups))
+	for key, endpoint := range groups {
+		endpoint.Average = totals[key] / time.Duration(endpoint.Requests)
+		endpoint.ErrorRate = float64(endpoint.Errors) / float64(endpoint.Requests)
+		out = append(out, *endpoint)
+	}
+	return out
 }
