@@ -25,6 +25,14 @@ func Render(w io.Writer, r Report) error {
 	for _, row := range rows {
 		if _, err := fmt.Fprintf(w, "| %s | %s |\n", row[0], row[1]); err != nil { return err }
 	}
+	if _, err := fmt.Fprint(w, "\n## HTTP Status Codes\n\n| Status | Requests |\n| ---: | ---: |\n"); err != nil { return err }
+	if len(r.StatusCodes) == 0 {
+		if _, err := fmt.Fprintln(w, "| — | 0 |"); err != nil { return err }
+	} else {
+		for _, status := range r.StatusCodes {
+			if _, err := fmt.Fprintf(w, "| %d | %d |\n", status.Status, status.Count); err != nil { return err }
+		}
+	}
 	return nil
 }
 
