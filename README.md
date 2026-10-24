@@ -212,6 +212,8 @@ flowchart TD
 | `devpulse anomalies --json` | Emit baseline regression findings as JSON |
 | `devpulse validate` | Validate session schema and request invariants |
 | `devpulse validate --json` | Export a machine-readable validation report |
+| `devpulse report` | Generate a Markdown report for sharing or CI artifacts |
+| `devpulse report --out - --title "CI Traffic"` | Render a custom-titled report to stdout |
 | `devpulse watch` | Continuously refresh local service/traffic state |
 | `devpulse config` | Read or update persistent defaults |
 | `devpulse version` | Print the current build version |
@@ -280,7 +282,7 @@ Example:
 devpulse traffic --target http://localhost:8080 --listen :9090
 ```
 
-Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation.
+Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`; use `--out -` for stdout and `--top 0` to omit slow-request details.
 
 ---
 

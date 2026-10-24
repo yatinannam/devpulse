@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"runtime"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func TestRunReportWritesFileWithPrivatePermissions(t *testing.T) {
 	if !strings.Contains(string(data), "# File Report") { t.Fatalf("unexpected report: %s", data) }
 	info, err := os.Stat(outputPath)
 	if err != nil { t.Fatal(err) }
-	if info.Mode().Perm()&0077 != 0 { t.Fatalf("report permissions are too broad: %o", info.Mode().Perm()) }
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 { t.Fatalf("report permissions are too broad: %o", info.Mode().Perm()) }
 }
 
 func TestRunReportRejectsNegativeTopAndMissingSession(t *testing.T) {
