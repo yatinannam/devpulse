@@ -52,3 +52,38 @@ func TestRunReportRejectsNegativeTopAndMissingSession(t *testing.T) {
 		t.Fatal("expected missing session to fail")
 	}
 }
+
+
+func TestRunReportWritesJSONToStdout(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	var out bytes.Buffer
+	if err := runReportWithFormat(sessionPath, "-", "JSON Report", 1, "json", &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{`"title": "JSON Report"`, `"summary"`, `"status_codes"`, `"slowest_requests"`, `"path": "/broken"`} {
+		if !strings.Contains(out.String(), expected) {
+			t.Errorf("JSON report missing %q: %s", expected, out.String())
+		}
+	}
+}
+
+func TestRunReportWritesJSONFile(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "report.json")
+	if err := runReportWithFormat(sessionPath, outputPath, "File JSON", 0, "json", &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"title": "File JSON"`) || strings.Contains(string(data), "# File JSON") {
+		t.Fatalf("unexpected JSON report: %s", data)
+	}
+}
+
+func TestRunReportRejectsUnsupportedFormat(t *testing.T) {
+	if err := runReportWithFormat("ignored", "-", "Report", 1, "yaml", &bytes.Buffer{}); err == nil {
+		t.Fatal("expected unsupported format to fail")
+	}
+}
