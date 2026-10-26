@@ -213,7 +213,8 @@ flowchart TD
 | `devpulse validate` | Validate session schema and request invariants |
 | `devpulse validate --json` | Export a machine-readable validation report |
 | `devpulse report` | Generate a Markdown report for sharing or CI artifacts |
-| `devpulse report --out - --title "CI Traffic"` | Render a custom-titled report to stdout |
+| `devpulse report --out - --title "CI Traffic"` | Render a custom-titled Markdown report to stdout |
+| `devpulse report --format json --out ./traffic.json` | Export a machine-readable traffic report |
 | `devpulse watch` | Continuously refresh local service/traffic state |
 | `devpulse config` | Read or update persistent defaults |
 | `devpulse version` | Print the current build version |
@@ -282,7 +283,7 @@ Example:
 devpulse traffic --target http://localhost:8080 --listen :9090
 ```
 
-Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`; use `--out -` for stdout and `--top 0` to omit slow-request details.
+Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`, or add `--format json` for machine-readable output. Use `--out -` for stdout and `--top 0` to omit slow-request details. See [the report guide](docs/markdown-reports.md) for examples and data-handling notes.
 
 ---
 
