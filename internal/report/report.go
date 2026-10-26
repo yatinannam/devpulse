@@ -16,27 +16,30 @@ type Options struct {
 	GeneratedAt time.Time
 }
 
-type StatusCount struct { Status int; Count int }
+type StatusCount struct {
+	Status int `json:"status"`
+	Count int `json:"count"`
+}
 
 type Endpoint struct {
-	Method string
-	Path string
-	Requests int
-	Errors int
-	ErrorRate float64
-	Average time.Duration
+	Method string `json:"method"`
+	Path string `json:"path"`
+	Requests int `json:"requests"`
+	Errors int `json:"errors"`
+	ErrorRate float64 `json:"error_rate"`
+	Average time.Duration `json:"average_latency"`
 }
 
 type Report struct {
-	Title string
-	SessionPath string
-	SessionCreatedAt time.Time
-	GeneratedAt time.Time
-	Summary summary.Report
-	StatusCodes []StatusCount
-	Endpoints []Endpoint
-	Slowest []traffic.Request
-	Findings []doctor.Finding
+	Title string `json:"title"`
+	SessionPath string `json:"session_path"`
+	SessionCreatedAt time.Time `json:"session_created_at"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Summary summary.Report `json:"summary"`
+	StatusCodes []StatusCount `json:"status_codes"`
+	Endpoints []Endpoint `json:"endpoints"`
+	Slowest []traffic.Request `json:"slowest_requests"`
+	Findings []doctor.Finding `json:"findings"`
 }
 
 // Build creates a report from a saved traffic session.
