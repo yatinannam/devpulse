@@ -46,6 +46,8 @@ func main() {
 		validateCommand(os.Args[2:])
 	case "report":
 		reportCommand(os.Args[2:])
+	case "export":
+		exportCommand(os.Args[2:])
 	case "ports":
 		portsCommand(os.Args[2:])
 	case "traffic":
@@ -483,6 +485,7 @@ func printHelp() {
 	fmt.Println("  anomalies  Detect regressions against a saved baseline")
 	fmt.Println("  validate   Validate a captured traffic session")
 	fmt.Println("  report     Generate a Markdown traffic report")
+	fmt.Println("  export     Export captured requests as filtered CSV")
 	fmt.Println("  ports      List local listening ports and processes")
 	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
 	fmt.Println("  status     Show services and captured traffic")
