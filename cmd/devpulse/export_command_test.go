@@ -79,3 +79,28 @@ func TestRunExportWritesFile(t *testing.T) {
 		t.Fatalf("expected two rows in output file, got %d CSV records", len(records)-1)
 	}
 }
+
+
+func TestRunExportFiltersHTTPMethodCaseInsensitively(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{Method: " post "}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 2 || records[1][1] != "POST" {
+		t.Fatalf("expected only POST request, got %#v", records)
+	}
+}
+
+func TestRunExportReturnsHeaderWhenNoRequestsMatch(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{Method: "DELETE"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 1 || records[0][0] != "timestamp" {
+		t.Fatalf("expected header-only CSV, got %#v", records)
+	}
+}
