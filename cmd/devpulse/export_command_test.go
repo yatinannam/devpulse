@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -145,5 +146,51 @@ func TestRunExportRejectsNegativeLimit(t *testing.T) {
 	sessionPath := writeExportFixture(t)
 	if err := runExport(sessionPath, "-", exportOptions{Limit: -1}, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected negative limit to fail")
+	}
+}
+
+
+func TestRunExportFiltersInclusiveTimeWindow(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	since := time.Date(2026, 10, 28, 10, 1, 0, 0, time.UTC)
+	until := since
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{Since: since, Until: until}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 2 || records[1][1] != "POST" {
+		t.Fatalf("expected request exactly on the time boundary, got %#v", records)
+	}
+}
+
+func TestRunExportRejectsReversedTimeWindow(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	since := time.Date(2026, 10, 28, 10, 1, 0, 0, time.UTC)
+	until := since.Add(-time.Second)
+	if err := runExport(sessionPath, "-", exportOptions{Since: since, Until: until}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected reversed time range to fail")
+	}
+}
+
+func TestRunExportProtectsInputSessionAndUsesPrivateFilePermissions(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	if err := runExport(sessionPath, sessionPath, exportOptions{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected export to reject overwriting the input session")
+	}
+	if _, err := traffic.LoadSession(sessionPath); err != nil {
+		t.Fatalf("input session was changed by rejected export: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "private", "traffic.csv")
+	if err := runExport(sessionPath, outputPath, exportOptions{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("CSV permissions are too broad: %o", info.Mode().Perm())
 	}
 }
