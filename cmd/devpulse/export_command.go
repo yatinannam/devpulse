@@ -21,6 +21,7 @@ type exportOptions struct {
 	PathPrefix string
 	Since      time.Time
 	Until      time.Time
+	Limit      int
 }
 
 func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Writer) error {
@@ -34,7 +35,13 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 	if opts.Status != 0 && (opts.Status < 100 || opts.Status > 599) {
 		return fmt.Errorf("--status must be between 100 and 599")
 	}
+	if opts.Limit < 0 {
+		return fmt.Errorf("--limit must be zero or greater")
+	}
 	requests := filterExportRequests(session.Requests, opts)
+	if opts.Limit > 0 && len(requests) > opts.Limit {
+		requests = requests[:opts.Limit]
+	}
 
 	var content bytes.Buffer
 	writer := csv.NewWriter(&content)
@@ -83,6 +90,7 @@ func exportCommand(args []string) {
 	method := fs.String("method", "", "filter by HTTP method")
 	statusCode := fs.Int("status", 0, "filter by HTTP status code")
 	pathPrefix := fs.String("path-prefix", "", "filter paths by prefix")
+	limit := fs.Int("limit", 0, "maximum number of matching requests to export (0 means unlimited)")
 	sinceText := fs.String("since", "", "include requests at or after RFC3339 timestamp")
 	untilText := fs.String("until", "", "include requests at or before RFC3339 timestamp")
 	_ = fs.Parse(args)
@@ -102,7 +110,7 @@ func exportCommand(args []string) {
 		os.Exit(2)
 	}
 	if err := runExport(*from, *out, exportOptions{
-		Method: *method, Status: *statusCode, PathPrefix: *pathPrefix, Since: since, Until: until,
+		Method: *method, Status: *statusCode, PathPrefix: *pathPrefix, Since: since, Until: until, Limit: *limit,
 	}, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
