@@ -215,6 +215,8 @@ flowchart TD
 | `devpulse report` | Generate a Markdown report for sharing or CI artifacts |
 | `devpulse report --out - --title "CI Traffic"` | Render a custom-titled Markdown report to stdout |
 | `devpulse report --format json --out ./traffic.json` | Export a machine-readable traffic report |
+| `devpulse export` | Export captured requests as CSV to stdout |
+| `devpulse export --status 500 --path-prefix /api/ --out ./errors.csv` | Filter and save request telemetry as CSV |
 | `devpulse watch` | Continuously refresh local service/traffic state |
 | `devpulse config` | Read or update persistent defaults |
 | `devpulse version` | Print the current build version |
@@ -283,7 +285,7 @@ Example:
 devpulse traffic --target http://localhost:8080 --listen :9090
 ```
 
-Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`, or add `--format json` for machine-readable output. Use `--out -` for stdout and `--top 0` to omit slow-request details. See [the report guide](docs/markdown-reports.md) for examples and data-handling notes.
+Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`, or add `--format json` for machine-readable output. Use `--out -` for stdout and `--top 0` to omit slow-request details. See [the report guide](docs/markdown-reports.md) for examples and data-handling notes. Export individual request rows to CSV with `devpulse export --out ./artifacts/traffic.csv`; combine `--method`, `--status`, `--path-prefix`, `--since`, `--until`, and `--limit` to narrow the output. See the [CSV export guide](docs/traffic-csv-export.md) for the column schema and filtering behavior.
 
 ---
 
