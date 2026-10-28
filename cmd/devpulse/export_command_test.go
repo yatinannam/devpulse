@@ -104,3 +104,26 @@ func TestRunExportReturnsHeaderWhenNoRequestsMatch(t *testing.T) {
 		t.Fatalf("expected header-only CSV, got %#v", records)
 	}
 }
+
+
+func TestRunExportFiltersByStatusAndPathPrefix(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{Status: 500, PathPrefix: "/api/items?name"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 2 || records[1][1] != "POST" || records[1][3] != "500" {
+		t.Fatalf("expected only matching 500 request, got %#v", records)
+	}
+}
+
+func TestRunExportRejectsInvalidStatusFilter(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	for _, status := range []int{-1, 99, 600} {
+		err := runExport(sessionPath, "-", exportOptions{Status: status}, &bytes.Buffer{})
+		if err == nil {
+			t.Errorf("expected status %d to be rejected", status)
+		}
+	}
+}
