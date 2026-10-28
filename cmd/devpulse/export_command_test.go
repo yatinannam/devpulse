@@ -194,3 +194,24 @@ func TestRunExportProtectsInputSessionAndUsesPrivateFilePermissions(t *testing.T
 		t.Fatalf("CSV permissions are too broad: %o", info.Mode().Perm())
 	}
 }
+
+
+func TestRunExportEscapesQuotedAndMultilineCSVFields(t *testing.T) {
+	sessionPath := filepath.Join(t.TempDir(), "session.json")
+	pathValue := "/api/items/\"quoted\"\nnext-line"
+	entry := traffic.Request{
+		Time: time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC),
+		Method: "GET", Path: pathValue, Status: 200, Latency: 2 * time.Millisecond,
+	}
+	if err := traffic.SaveSession(sessionPath, []traffic.Request{entry}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 2 || records[1][2] != pathValue {
+		t.Fatalf("CSV did not round-trip quoted/newline path: %#v", records)
+	}
+}
