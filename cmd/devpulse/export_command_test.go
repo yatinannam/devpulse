@@ -215,3 +215,27 @@ func TestRunExportEscapesQuotedAndMultilineCSVFields(t *testing.T) {
 		t.Fatalf("CSV did not round-trip quoted/newline path: %#v", records)
 	}
 }
+
+
+func TestParseExportTime(t *testing.T) {
+	t.Run("empty means unset", func(t *testing.T) {
+		got, err := parseExportTime("--since", "")
+		if err != nil || !got.IsZero() {
+			t.Fatalf("expected zero time and no error, got %v, %v", got, err)
+		}
+	})
+	t.Run("RFC3339 timestamp", func(t *testing.T) {
+		got, err := parseExportTime("--since", "2026-10-28T12:00:00+02:00")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Equal(time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)) {
+			t.Fatalf("unexpected parsed instant: %v", got)
+		}
+	})
+	t.Run("invalid timestamp", func(t *testing.T) {
+		if _, err := parseExportTime("--until", "yesterday"); err == nil {
+			t.Fatal("expected invalid timestamp to fail")
+		}
+	})
+}
