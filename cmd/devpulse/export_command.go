@@ -74,11 +74,19 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-		return fmt.Errorf("create output directory: %w", err)
+	inputAbs, err := filepath.Abs(sessionPath)
+	if err != nil {
+		return fmt.Errorf("resolve session path: %w", err)
 	}
-	if err := os.WriteFile(outputPath, content.Bytes(), 0600); err != nil {
-		return fmt.Errorf("write CSV file: %w", err)
+	outputAbs, err := filepath.Abs(outputPath)
+	if err != nil {
+		return fmt.Errorf("resolve output path: %w", err)
+	}
+	if inputAbs == outputAbs {
+		return fmt.Errorf("output path must differ from the source session")
+	}
+	if err := writeExportFile(outputPath, content.Bytes()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -155,4 +163,38 @@ func filterExportRequests(entries []traffic.Request, opts exportOptions) []traff
 		out = append(out, entry)
 	}
 	return out
+}
+
+
+// writeExportFile replaces a CSV file atomically and keeps its contents private.
+func writeExportFile(outputPath string, data []byte) error {
+	dir := filepath.Dir(outputPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".devpulse-export-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary CSV file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure temporary CSV file: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temporary CSV file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temporary CSV file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary CSV file: %w", err)
+	}
+	if err := os.Rename(tmpName, outputPath); err != nil {
+		return fmt.Errorf("replace CSV output: %w", err)
+	}
+	return nil
 }
