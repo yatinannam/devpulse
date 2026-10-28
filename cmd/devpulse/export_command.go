@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/traffic"
@@ -29,13 +31,17 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 	if !opts.Since.IsZero() && !opts.Until.IsZero() && opts.Since.After(opts.Until) {
 		return fmt.Errorf("--since must not be after --until")
 	}
+	if opts.Status != 0 && (opts.Status < 100 || opts.Status > 599) {
+		return fmt.Errorf("--status must be between 100 and 599")
+	}
+	requests := filterExportRequests(session.Requests, opts)
 
 	var content bytes.Buffer
 	writer := csv.NewWriter(&content)
 	if err := writer.Write([]string{"timestamp", "method", "path", "status", "latency_ms", "bytes", "target_host", "target_port"}); err != nil {
 		return fmt.Errorf("write CSV header: %w", err)
 	}
-	for _, entry := range session.Requests {
+	for _, entry := range requests {
 		record := []string{
 			entry.Time.UTC().Format(time.RFC3339Nano),
 			entry.Method,
@@ -115,4 +121,30 @@ func parseExportTime(flagName, value string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("%s must be an RFC3339 timestamp: %w", flagName, err)
 	}
 	return parsed, nil
+}
+
+
+// filterExportRequests applies the optional filters without mutating the source session.
+func filterExportRequests(entries []traffic.Request, opts exportOptions) []traffic.Request {
+	method := strings.ToUpper(strings.TrimSpace(opts.Method))
+	out := make([]traffic.Request, 0, len(entries))
+	for _, entry := range entries {
+		if method != "" && !strings.EqualFold(strings.TrimSpace(entry.Method), method) {
+			continue
+		}
+		if opts.Status != 0 && entry.Status != opts.Status {
+			continue
+		}
+		if opts.PathPrefix != "" && !strings.HasPrefix(entry.Path, opts.PathPrefix) {
+			continue
+		}
+		if !opts.Since.IsZero() && entry.Time.Before(opts.Since) {
+			continue
+		}
+		if !opts.Until.IsZero() && entry.Time.After(opts.Until) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
