@@ -127,3 +127,23 @@ func TestRunExportRejectsInvalidStatusFilter(t *testing.T) {
 		}
 	}
 }
+
+
+func TestRunExportLimitsMatchingRows(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{Limit: 1}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	if len(records) != 2 || records[1][1] != "GET" {
+		t.Fatalf("expected only the first request after limiting, got %#v", records)
+	}
+}
+
+func TestRunExportRejectsNegativeLimit(t *testing.T) {
+	sessionPath := writeExportFixture(t)
+	if err := runExport(sessionPath, "-", exportOptions{Limit: -1}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected negative limit to fail")
+	}
+}
