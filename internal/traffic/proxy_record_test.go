@@ -135,6 +135,25 @@ func TestProxyRecordsBodylessResponsesExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestProxyRecordsTheClientRequestURI(t *testing.T) {
+	upstreamURI := make(chan string, 1)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamURI <- r.URL.RequestURI()
+	}))
+	defer backend.Close()
+	recorder, proxy := startCapture(t, backend.URL+"/api")
+
+	fetch(t, http.MethodGet, proxy.URL+"/users?x=1")
+	proxy.Close()
+
+	if got := <-upstreamURI; got != "/api/users?x=1" {
+		t.Fatalf("upstream received %q, want the target path prefix applied", got)
+	}
+	if got := onlyEntry(t, recorder).Path; got != "/users?x=1" {
+		t.Fatalf("recorded path %q, want the client's request URI /users?x=1", got)
+	}
+}
+
 func TestProxyRecordsClientCancellationAs499(t *testing.T) {
 	arrived := make(chan struct{}, 1)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

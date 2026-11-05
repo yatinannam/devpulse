@@ -164,7 +164,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
   client ──────► 127.0.0.1:9090 ──────► target (default http://localhost:3000)
                  │
                  │  traffic.Handler
-                 │    stores per-request state (start time, record-once guard)
+                 │    stores per-request state (start time, client URI, record-once guard)
                  │    answers X-DevPulse-Probe itself (never forwarded)
                  │
                  │  httputil.ReverseProxy
@@ -185,7 +185,7 @@ Each captured request becomes one record:
 | --- | --- | --- |
 | `time` | RFC 3339 timestamp | Proxy receive time |
 | `method` | string | Request method |
-| `path` | string | Upstream request URI, including the query string |
+| `path` | string | Client request URI, including the query string, before any `--target` path prefix |
 | `status` | int | Upstream status; `502` if the upstream could not be reached, `499` if the client cancelled first |
 | `latency` | int (ns) | Receive time until the response body finished streaming |
 | `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |

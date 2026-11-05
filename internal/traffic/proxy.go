@@ -57,7 +57,7 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	original := proxy.Director
 	proxy.Director = func(req *http.Request) { original(req); req.Header.Set("X-DevPulse", "1") }
-	record := func(req *http.Request, status int, bytes int64, start time.Time) {
+	record := func(req *http.Request, status int, bytes int64, state *requestState) {
 		port := 0
 		if p := u.Port(); p != "" {
 			fmt.Sscanf(p, "%d", &port)
@@ -66,7 +66,7 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		} else {
 			port = 80
 		}
-		recorder.Add(Request{Time: start, Method: req.Method, Path: req.URL.RequestURI(), Status: status, Latency: time.Since(start), Bytes: bytes, TargetHost: u.Hostname(), TargetPort: port})
+		recorder.Add(Request{Time: state.start, Method: req.Method, Path: state.uri, Status: status, Latency: time.Since(state.start), Bytes: bytes, TargetHost: u.Hostname(), TargetPort: port})
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		state, ok := resp.Request.Context().Value(stateKey{}).(*requestState)
@@ -75,7 +75,7 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		}
 		req, status := resp.Request, resp.StatusCode
 		finish := func(bytes int64) {
-			state.once.Do(func() { record(req, status, bytes, state.start) })
+			state.once.Do(func() { record(req, status, bytes, state) })
 		}
 		if status == http.StatusSwitchingProtocols {
 			// ReverseProxy needs the original read-write body to tunnel an
@@ -94,7 +94,7 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 			status = StatusClientClosedRequest
 		}
 		if state, ok := req.Context().Value(stateKey{}).(*requestState); ok {
-			state.once.Do(func() { record(req, status, 0, state.start) })
+			state.once.Do(func() { record(req, status, 0, state) })
 		}
 		if status == StatusClientClosedRequest {
 			return
@@ -112,10 +112,13 @@ const StatusClientClosedRequest = 499
 type stateKey struct{}
 
 // requestState is the per-request bookkeeping Handler stores in the request
-// context. once guarantees a proxied request is recorded exactly once, by
-// whichever of the response body or the error handler finishes it first.
+// context. uri is the client's request URI, captured before the proxy rewrites
+// the URL for the upstream. once guarantees a proxied request is recorded
+// exactly once, by whichever of the response body or the error handler
+// finishes it first.
 type requestState struct {
 	start time.Time
+	uri   string
 	once  sync.Once
 }
 
@@ -159,7 +162,7 @@ func Handler(proxy http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		ctx := context.WithValue(r.Context(), stateKey{}, &requestState{start: time.Now()})
+		ctx := context.WithValue(r.Context(), stateKey{}, &requestState{start: time.Now(), uri: r.URL.RequestURI()})
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
