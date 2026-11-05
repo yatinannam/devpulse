@@ -1,7 +1,8 @@
 <div align="center">
 
 # DevPulse
-### Local Development Observability for the Terminal
+
+### Local development observability for the terminal
 
 **Know what is running. See what is receiving traffic. Find what needs attention.**
 
@@ -15,481 +16,424 @@
 
 ---
 
-## What is DevPulse?
+DevPulse is a single static Go binary (no cgo, no runtime dependencies) that gives you a live picture of your local development environment from the terminal. It combines two subsystems:
 
-DevPulse is a **cross-platform Go CLI for local development observability**.
+| Subsystem | Responsibility | Mechanism |
+| --- | --- | --- |
+| **PortDoctor** | Discover listening TCP sockets, owning processes, and which of them speak HTTP | Platform socket tables (`ss`, `lsof`, `netstat`) plus bounded HTTP probing |
+| **APIWatch** | Capture request-level telemetry for your app | Loopback reverse proxy (`net/http/httputil`) that records every request into a versioned JSON session |
 
-It combines two ideas into one terminal workflow:
+Everything downstream (`status`, `doctor`, `summary`, `timeline`, `baseline`, `diff`, `anomalies`, `report`, `export`) is a pure, deterministic function of those two data sources. DevPulse is **local-first**: it has no telemetry, uploads nothing, talks only to loopback and your configured target, and writes only to paths you control.
 
-- **PortDoctor** — discovers local listening services, processes, and HTTP-capable endpoints.
-- **APIWatch** — captures HTTP traffic through a local reverse proxy and records request-level telemetry.
+## Contents
 
-The result is a small local diagnostic pipeline:
-
-```text
-┌──────────────────────────────────────────────────────────┐
-│                     LOCAL MACHINE                        │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  processes ──► ports ──► HTTP services ──► endpoints    │
-│                                           │              │
-│                                           ▼              │
-│                                     HTTP traffic         │
-│                                           │              │
-│                           ┌───────────────┼────────────┐ │
-│                           ▼               ▼            ▼ │
-│                        status           recent       doctor
-│                           │               │            │
-│                           └───────────────┼────────────┘ │
-│                                           ▼              │
-│                                      watch              │
-└──────────────────────────────────────────────────────────┘
-```
-
-DevPulse is deliberately **local-first**: session data and configuration stay on the developer's machine unless the developer explicitly moves them elsewhere.
+- [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [Command reference](#command-reference)
+- [APIWatch: traffic capture](#apiwatch-traffic-capture)
+- [PortDoctor: service discovery](#portdoctor-service-discovery)
+- [Analysis engine](#analysis-engine)
+- [Files, paths and configuration](#files-paths-and-configuration)
+- [Installation](#installation)
+- [Security model](#security-model)
+- [Release engineering](#release-engineering)
+- [Development](#development)
+- [Known limitations](#known-limitations)
+- [Roadmap](#roadmap)
 
 ---
 
-## Quick Start
-
-Install the binary once, put it on your `PATH`, then initialize the project:
+## Quick start
 
 ```bash
 cd my-project
-devpulse init
-devpulse traffic
+devpulse init        # detect the project, find its HTTP server, save the target
+devpulse traffic     # proxy 127.0.0.1:9090 -> your app; Ctrl+C saves the session
 ```
 
-After traffic has been captured:
+Point your browser or client at `http://127.0.0.1:9090`, exercise the app, then stop the proxy and inspect:
 
 ```bash
-devpulse status
-devpulse recent
-devpulse doctor
-devpulse watch
+devpulse status      # services correlated with captured traffic
+devpulse recent      # last 10 requests
+devpulse doctor      # errors, slow requests, request loops
+devpulse watch       # live dashboard, refreshed every 2s
 ```
 
-Need the command reference?
-
-```bash
-devpulse
-devpulse help
-devpulse --help
-devpulse -h
-```
-
-Version aliases:
-
-```bash
-devpulse version
-devpulse --version
-devpulse -v
-```
+`devpulse`, `devpulse help`, `-h` and `--help` print the command list. `devpulse version`, `--version` and `-v` print the build version.
 
 ---
 
-## The Developer Workflow
-
-```text
-        ┌───────────────┐
-        │  devpulse     │
-        │  init         │
-        └───────┬───────┘
-                │
-                ▼
-      detect project + target
-                │
-                ▼
-        ┌───────────────┐
-        │  devpulse     │
-        │  traffic      │
-        └───────┬───────┘
-                │
-                ▼
-      local reverse proxy :9090
-                │
-                ▼
-        ┌─────────────────┐
-        │   application   │
-        └────────┬────────┘
-                 │
-                 ▼
-          session.json
-                 │
-        ┌────────┼─────────┐
-        ▼        ▼         ▼
-      status   recent    doctor
-        │
-        └──────────────► watch
-```
-
-The intended experience is:
-
-> **Install once → initialize once → inspect continuously.**
-
----
-
-## What DevPulse Observes
-
-| Layer | Signal | DevPulse view |
-| --- | --- | --- |
-| Process | PID / process name | PortDoctor |
-| Network | Listening TCP sockets | PortDoctor |
-| Service | HTTP reachability | PortDoctor |
-| Framework | HTTP/server fingerprints | Discovery |
-| Request | Method + URI + status | APIWatch |
-| Timing | Request latency | APIWatch |
-| Volume | Endpoint request counts | Status |
-| Failures | 4xx / 5xx responses | Doctor |
-| Repetition | Repeated request patterns | Doctor |
-| Live state | Port changes / refresh | Watch |
-
----
-
-##  Architecture
+## Architecture
 
 ```mermaid
-flowchart TD
-    A[Developer Terminal] --> B[DevPulse CLI]
-    B --> C[Project Discovery]
-    B --> D[PortDoctor]
-    B --> E[APIWatch]
-
-    C --> F[Project Type]
-    D --> G[Processes / Ports]
-    D --> H[HTTP Services]
-
-    E --> I[Local Reverse Proxy]
-    I --> J[Application]
-    I --> K[Request Recorder]
-    K --> L[Session Store]
-
-    H --> M[Service Correlation]
-    L --> M
-
-    M --> N[Status]
-    L --> O[Recent]
-    L --> P[Doctor]
-    M --> Q[Watch]
+flowchart LR
+    subgraph Discovery["PortDoctor"]
+        P[ports<br/>ss / lsof / netstat] --> D[discovery<br/>HTTP probe + fingerprint]
+    end
+    subgraph Capture["APIWatch"]
+        C[client] --> X[traffic proxy<br/>127.0.0.1:9090] --> A[your app]
+        X --> R[recorder] --> S[(session.json)]
+    end
+    D --> ST[status / watch]
+    S --> ST
+    D --> I[init<br/>target selection]
+    S --> AN[doctor / summary / timeline<br/>report / export / validate]
+    D --> B[(baseline.json)]
+    S --> B
+    B --> DF[diff / anomalies]
 ```
 
-### Runtime model
+### Package layout
 
-```text
-┌──────────────┐       ┌─────────────────────┐
-│ PortDoctor   │──────►│                     │
-│              │       │ Service Correlation │──────► status/watch
-└──────────────┘       │                     │
-                       └──────────┬──────────┘
-                                  ▲
-                                  │
-┌──────────────┐       ┌──────────┴──────────┐
-│ APIWatch     │──────►│ Session / Endpoints │──────► recent/doctor
-│              │       │                     │
-└──────────────┘       └─────────────────────┘
-```
-
----
-
-## Command Reference
-
-| Command | Description |
+| Package | Role |
 | --- | --- |
-| `devpulse init` | Detect the current project and configure a local HTTP target |
-| `devpulse ports` | List local listening ports and processes |
-| `devpulse ports --watch` | Watch for port additions/removals |
-| `devpulse traffic` | Capture HTTP traffic through the local proxy |
-| `devpulse status` | Correlate discovered services with captured traffic |
-| `devpulse recent` | Show the most recent captured requests |
-| `devpulse doctor` | Analyze a captured session for errors and suspicious patterns |
-| `devpulse doctor --profile strict` | Apply lower latency and duplicate-request thresholds |
-| `devpulse doctor --profile permissive` | Report only higher-severity latency/status conditions |
-| `devpulse doctor --json` | Emit structured findings for scripts and CI |
-| `devpulse baseline` | Save a versioned snapshot of services and traffic |
-| `devpulse diff --json` | Compare the current environment against a saved baseline |
-| `devpulse summary --json` | Export aggregate latency and error-rate metrics |
-| `devpulse timeline --bucket 5m --json` | Export chronological request buckets |
-| `devpulse anomalies --json` | Emit baseline regression findings as JSON |
-| `devpulse validate` | Validate session schema and request invariants |
-| `devpulse validate --json` | Export a machine-readable validation report |
-| `devpulse report` | Generate a Markdown report for sharing or CI artifacts |
-| `devpulse report --out - --title "CI Traffic"` | Render a custom-titled Markdown report to stdout |
-| `devpulse report --format json --out ./traffic.json` | Export a machine-readable traffic report |
-| `devpulse export` | Export captured requests as CSV to stdout |
-| `devpulse export --status 500 --path-prefix /api/ --out ./errors.csv` | Filter and save request telemetry as CSV |
-| `devpulse watch` | Continuously refresh local service/traffic state |
-| `devpulse config` | Read or update persistent defaults |
-| `devpulse version` | Print the current build version |
-
-Every command is intended to expose command-specific flags through:
-
-```bash
-devpulse <command> --help
-```
-
-
-### Diagnostic profiles and automation
-
-The `doctor` command supports three deterministic threshold profiles:
-
-| Profile | Slow-request threshold | Error status threshold | Duplicate-request minimum |
-| --- | ---: | ---: | ---: |
-| `default` | 500 ms | 400 | 3 requests |
-| `strict` | 250 ms | 400 | 2 requests |
-| `permissive` | 1 s | 500 | 4 requests |
-
-Duplicate-request detection groups requests by method and raw path, sorts them by capture time, and checks whether the configured count occurred inside the profile's time window. Profiles change diagnostic thresholds; they do not change recorded traffic or mutate session files.
-
-Examples:
-
-```bash
-devpulse doctor --profile strict
-devpulse doctor --profile permissive --from ./fixtures/session.json
-devpulse doctor --json > findings.json
-```
-
-JSON output is intended for scripts, local dashboards, and CI integrations. The doctor envelope contains the session path, selected profile, request count, and a list of findings. Each finding includes `level`, `title`, `detail`, and `advice`.
-
-See [docs/architecture.md](docs/architecture.md) for the runtime data flow, [docs/session-validation.md](docs/session-validation.md) for validation rules, and [docs/session-format.md](docs/session-format.md) for the persisted JSON schema.
+| `cmd/devpulse` | CLI entry point. Flag parsing, command dispatch, exit codes, atomic file output |
+| `internal/ports` | Per-OS listener enumeration (`ports_linux.go`, `ports_darwin.go`, `ports_windows.go`, `ports_stub.go`), pure parsers, port watch loop |
+| `internal/discovery` | Concurrent HTTP probing of listeners and framework fingerprinting |
+| `internal/project` | Project-type detection from marker files and HTTP target selection |
+| `internal/traffic` | Reverse proxy, request recorder, session persistence |
+| `internal/status` | Endpoint normalization, per-service aggregation, health classification |
+| `internal/metrics` | Nearest-rank latency percentiles |
+| `internal/doctor` | Profile-driven diagnostics (errors, slow requests, duplicate-request bursts) |
+| `internal/summary` | Aggregate latency/error metrics and slowest requests |
+| `internal/timeline` | Fixed-width chronological bucketing |
+| `internal/baseline` | Versioned environment snapshots |
+| `internal/diff` | Baseline-to-current change detection |
+| `internal/anomaly` | Baseline regression rules (error rate, latency) |
+| `internal/sessioncheck` | Session schema and request-invariant validation |
+| `internal/report` | Markdown and JSON report rendering |
+| `internal/config` | Layered configuration loading and persistence |
+| `internal/output` | Shared JSON encoding |
 
 ---
 
-## APIWatch
+## Command reference
 
-APIWatch runs as a local reverse proxy.
+Every command takes **flags only**. Pass files with flags such as `--from`. A stray positional argument (for example `devpulse validate ./session.json`) is rejected with exit status 2; it is never silently ignored. Run `devpulse <command> --help` for the generated flag list.
 
-Default topology:
+### Discovery and capture
+
+| Command | Flags (default) | Description |
+| --- | --- | --- |
+| `init` | | Detect the project type, probe local HTTP services, and save the best match as `target` in `./.devpulse/config.json` |
+| `ports` | `--watch` (`false`) | List listening TCP ports with PID and process. `--watch` then prints `+`/`-` events every second |
+| `traffic` | `--listen` (config), `--target` (config) | Run the recording proxy. `SIGINT`/`SIGTERM` saves the session and exits |
+| `status` | `--from` (session) | Discovered services joined with captured traffic, per-endpoint stats and health |
+| `watch` | `--interval` (config, `2s`), `--from` (session) | Re-render `status` on an interval |
+
+### Analysis
+
+| Command | Flags (default) | Description |
+| --- | --- | --- |
+| `recent` | `-n` (`10`), `--from`, `--json` | Most recent requests, newest first |
+| `doctor` | `--profile` (`default`), `--from`, `--json` | Diagnostic findings. Profiles: `default`, `strict`, `permissive` |
+| `summary` | `--slowest` (`5`), `--from`, `--json` | Totals, error rate, mean, p50/p95/p99, slowest requests |
+| `timeline` | `--bucket` (`1m`), `--from`, `--json` | Request count, errors and mean latency per time bucket |
+| `validate` | `--from`, `--json` | Check session schema and request invariants. Exit 1 when invalid |
+
+### Baselines and change detection
+
+| Command | Flags (default) | Description |
+| --- | --- | --- |
+| `baseline` | `--from` (session), `--to` (`./.devpulse/baseline.json`) | Snapshot discovered services plus normalized endpoint statistics |
+| `diff` | `--from` (baseline), `--session`, `--json` | Changes between the baseline and the current environment |
+| `anomalies` | `--baseline`, `--session`, `--json` | Regression findings: new or removed services, error-rate jumps, latency regressions |
+
+### Reporting and export
+
+| Command | Flags (default) | Description |
+| --- | --- | --- |
+| `report` | `--out` (`devpulse-report.md`), `--format` (`markdown`), `--title`, `--top` (`5`), `--from` | Shareable Markdown or JSON report. `--out -` writes to stdout |
+| `export` | `--out` (`-`), `--method`, `--status`, `--path-prefix`, `--since`, `--until`, `--limit`, `--from` | Filtered CSV of individual requests. See the [CSV export guide](docs/traffic-csv-export.md) |
+| `config` | `--target`, `--listen`, `--watch-interval` | Print, or update and print, the active configuration |
+
+### Exit status
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
+| `1` | Runtime failure (unreadable session, I/O error, discovery failure), or `validate` found an invalid session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until`, `--profile`, `-n` or interval |
+
+---
+
+## APIWatch: traffic capture
 
 ```text
-client
-  │
-  ▼
-127.0.0.1:9090
-  │
-  │  DevPulse recorder
-  ▼
-localhost:3000
+  client ──────► 127.0.0.1:9090 ──────► target (default http://localhost:3000)
+                 │
+                 │  traffic.Handler
+                 │    stamps start time in the request context
+                 │    answers X-DevPulse-Probe itself (never forwarded)
+                 │
+                 │  httputil.ReverseProxy
+                 │    ModifyResponse ─► record status, latency, bytes
+                 │    ErrorHandler   ─► record synthetic 502
+                 ▼
+            Recorder (mutex-guarded, keeps the newest 1000 requests)
+                 │
+                 │  SIGINT / SIGTERM
+                 ▼
+            session.json (temp file + rename, mode 0600)
 ```
 
-Default configuration:
+Each captured request becomes one record:
 
-```text
-listen = :9090
-target = http://localhost:3000
-session = ~/.devpulse/session.json
-```
+| Field | Type | Source |
+| --- | --- | --- |
+| `time` | RFC 3339 timestamp | Proxy receive time |
+| `method` | string | Request method |
+| `path` | string | Upstream request URI, including the query string |
+| `status` | int | Upstream status, or `502` if the upstream could not be reached |
+| `latency` | int (ns) | Receive time until upstream response headers |
+| `bytes` | int | Upstream `Content-Length`, `-1` when unknown (for example chunked) |
+| `targetHost`, `targetPort` | string, int | Parsed from `--target` |
 
-Example:
+Sessions are versioned (`"version": 1`); readers reject unknown versions. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
 
 ```bash
-devpulse traffic --target http://localhost:8080 --listen :9090
+devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090
+devpulse validate --from ./artifacts/session.json --json
+devpulse report --from ./artifacts/session.json --out ./artifacts/traffic.md
+devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
-Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`, or add `--format json` for machine-readable output. Use `--out -` for stdout and `--top 0` to omit slow-request details. See [the report guide](docs/markdown-reports.md) for examples and data-handling notes. Export individual request rows to CSV with `devpulse export --out ./artifacts/traffic.csv`; combine `--method`, `--status`, `--path-prefix`, `--since`, `--until`, and `--limit` to narrow the output. See the [CSV export guide](docs/traffic-csv-export.md) for the column schema and filtering behavior.
+`report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. See [docs/markdown-reports.md](docs/markdown-reports.md).
 
 ---
 
-## PortDoctor
+## PortDoctor: service discovery
 
-PortDoctor performs platform-specific local socket inspection:
+### Listener enumeration
 
-```text
-Linux  → ss
-Windows → netstat + tasklist
-macOS  → lsof
-```
+| OS | Command | Parsing notes |
+| --- | --- | --- |
+| Linux | `ss -ltnp` | Process name and PID from the `users:(("name",pid=N,...))` column |
+| macOS | `lsof -nP -iTCP -sTCP:LISTEN -F pcn` | Field-mode output. Exit status 1 (no matches) is treated as an empty table |
+| Windows | `netstat -ano`, `tasklist /FO CSV /NH` | Reads both the TCP and TCPv6 tables. Listeners are matched by their wildcard foreign address (`0.0.0.0:0` / `[::]:0`), not the localized `LISTENING` text. IPv4 and IPv6 rows for the same port and PID are merged |
+| Other | | `ports_stub.go` returns an unsupported-platform error |
 
-The implementation abstracts those platform details behind the same internal service model, so the CLI presents one interface across supported platforms.
+The netstat, tasklist, ss and lsof parsers are pure functions with fixture tests that run on every CI platform.
 
-HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing.
+`ports --watch` diffs consecutive snapshots keyed by port. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
+
+### HTTP probing and fingerprinting
+
+Each listener is probed concurrently against `127.0.0.1:<port>`:
+
+1. TCP dial with a 250 to 300 ms timeout. Failure means a non-HTTP listener.
+2. `HEAD /`, with redirects not followed.
+3. If the headers do not identify the server, `GET /` with the body capped at 8 KiB.
+
+Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it with `204` and `X-DevPulse-Proxy: 1`, so discovery from `status`, `watch`, `init`, `baseline` and `diff` is never forwarded to your app or recorded in the session.
+
+| Signal | Classified as |
+| --- | --- |
+| `X-DevPulse-Proxy` header | `DevPulse proxy` (never chosen by `init`) |
+| `Server: uvicorn`, or body mentions `fastapi` | Python / FastAPI |
+| `Server: gunicorn` | Python / Gunicorn |
+| `Server` contains `next`, or body has `__NEXT_DATA__` / `_next/static` | Node / Next.js |
+| `Server` contains `vite`, or body has `@vite` / `vite/client` | Node / Vite |
+| `Server` contains `express` | Node / Express |
+| `Server` contains `jetty` / `tomcat`, or body mentions `spring` | Java / Spring |
+| `Server` contains `caddy` / `nginx` | Caddy / Nginx |
+| anything else that answers HTTP | HTTP service |
+
+`init` detects the project type from marker files (`next.config.*`, `vite.config.{js,ts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It prefers the conventional port for that type (Next.js 3000, Vite 5173, Python 8000, Go/Java 8080). It then falls back to the only HTTP service, then to the first of 3000, 5173, 8000, 8080, 8081 and 9000.
 
 ---
 
-## Diagnostics
+## Analysis engine
 
-The diagnostic layer currently aggregates:
+All analysis is deterministic for a given session and never modifies it.
 
-```text
-request count
-    +
-error count
-    +
-average latency
-    +
-slow-request count
-    +
-endpoint frequency
-    +
-repeated-request patterns
+**Endpoint normalization** (`status`, `baseline`, `diff`, `anomalies`) strips the query string and fragment, then replaces numeric and UUID path segments with `:id`. For example, `/users/42?tab=1` becomes `/users/:id`.
+
+**Percentiles** use the nearest-rank method on a sorted copy: `p = sorted[ceil(q·n) − 1]`.
+
+**Health** (`status`, `watch`): `error` if any request returned 4xx/5xx, `warning` if any took 500 ms or longer, otherwise `healthy`. Non-HTTP listeners show as `running`.
+
+### Doctor profiles
+
+| Profile | Slow request | Error status | Duplicate minimum | Duplicate window |
+| --- | ---: | ---: | ---: | ---: |
+| `default` | ≥ 500 ms | ≥ 400 | 3 | 3 s |
+| `strict` | ≥ 250 ms | ≥ 400 | 2 | 5 s |
+| `permissive` | ≥ 1 s | ≥ 500 | 4 | 2 s |
+
+Duplicate detection groups requests by exact method and raw path, sorts each group by time, and slides the profile window across it. A finding fires when any single window contains at least the minimum. This catches sustained request loops and a burst followed by a late straggler; the finding reports the densest burst. Details are in [docs/diagnostic-profiles.md](docs/diagnostic-profiles.md).
+
+### Anomaly rules
+
+| Kind | Severity | Condition |
+| --- | --- | --- |
+| `service-added` | info | Port listening now but absent from the baseline |
+| `service-removed` | warning | Port in the baseline but no longer listening |
+| `error-rate` | error | Current error rate ≥ 10 %, ≥ 2× the baseline rate, and ≥ 3 errors |
+| `latency-regression` | warning | Endpoint mean latency ≥ 2× the baseline with ≥ 3 requests |
+
+### Timeline
+
+Requests are grouped into buckets of `--bucket` width, aligned with `time.Truncate` (absolute time, UTC-aligned) and keyed by instant, so equal instants always share a bucket whatever their zone offset.
+
+---
+
+## Files, paths and configuration
+
+| File | Default location | Override |
+| --- | --- | --- |
+| Session | `~/.devpulse/session.json` | `DEVPULSE_SESSION`, or `--from` per command |
+| Configuration | see precedence below | `DEVPULSE_CONFIG` |
+| Baseline | `./.devpulse/baseline.json` | `--to` / `--from` / `--baseline` |
+
+Configuration is resolved from the first source that exists:
+
+1. `$DEVPULSE_CONFIG`
+2. The nearest `.devpulse/config.json`, searching from the current directory up to the filesystem root (written by `devpulse init`)
+3. `~/.devpulse/config.json`
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `listen` | `127.0.0.1:9090` | Loopback only. Use `0.0.0.0:9090` to expose the proxy deliberately |
+| `target` | `http://localhost:3000` | Must include the scheme |
+| `watch_interval` | `2s` | Positive Go duration such as `500ms` or `5s` |
+
+```bash
+devpulse config                                 # print the active file and values
+devpulse config --target http://localhost:8080
+devpulse config --listen 127.0.0.1:9090
+devpulse config --watch-interval 5s             # 0s, -1s or abc are rejected (exit 2)
 ```
 
-Example mental model:
-
-```text
-GET /api/users
-├── 184 requests
-├── 4 errors
-├── 72 ms average
-└── 2 repeated-request findings
-```
-
-This data model is also the foundation for the next generation of DevPulse analysis: baselines, change detection, anomaly correlation, and local dependency reasoning.
+Configuration files saved by versions before the loopback default may still contain `"listen": ":9090"` (all interfaces). Run `devpulse config --listen 127.0.0.1:9090` to update them. A malformed `watch_interval` in an existing file is reported on stderr and replaced by `2s` at runtime.
 
 ---
 
 ## Installation
 
-### Windows
+### Prebuilt binaries
 
-Download the latest Windows archive from [GitHub Releases](https://github.com/yatinannam/devpulse/releases), extract `devpulse.exe`, and add its directory to `PATH`.
-
-Verify:
-
-```powershell
-devpulse --version
-```
-
-### macOS / Linux
-
-Download the matching archive from [GitHub Releases](https://github.com/yatinannam/devpulse/releases), extract `devpulse`, and place `devpulse` on your `PATH`.
-
-Verify:
+Download the archive for your platform from [GitHub Releases](https://github.com/yatinannam/devpulse/releases), extract `devpulse` (`devpulse.exe` on Windows), and put it on your `PATH`. Check it against `checksums.txt`, whose build provenance is attested by GitHub:
 
 ```bash
+sha256sum --check --ignore-missing checksums.txt
+gh attestation verify checksums.txt --repo yatinannam/devpulse
 devpulse --version
 ```
 
-### Build from source
+### From source
 
-Requires **Go 1.22+**.
+Requires Go 1.22 or later. CI and releases use Go 1.27.3.
 
 ```bash
 git clone https://github.com/yatinannam/devpulse.git
 cd devpulse
-go build -o devpulse ./cmd/devpulse
-```
-
-Source builds are primarily intended for contributors and development.
-
----
-
-## Configuration
-
-Configuration defaults are stored under the user's DevPulse configuration directory.
-
-```bash
-devpulse config
-devpulse config --target http://localhost:8080
-devpulse config --listen :9090
-devpulse config --watch-interval 5s
-```
-
-Environment overrides:
-
-```text
-DEVPULSE_CONFIG   custom config path
-DEVPULSE_SESSION  custom session path
+CGO_ENABLED=0 go build -trimpath -o devpulse ./cmd/devpulse
 ```
 
 ---
 
-## Security & Supply Chain
+## Security model
 
-DevPulse includes automated security checks in GitHub Actions:
+- **Loopback by default.** The proxy binds `127.0.0.1`, so neither the proxied app nor the recorder is reachable from the network unless you pass a wider `--listen`.
+- **No egress.** DevPulse connects only to `127.0.0.1` (probes) and your configured `--target`.
+- **Private artifacts.** Sessions, reports, exports and baselines are written with mode `0600` through a temporary file and an atomic rename, so a crash never leaves a half-written file in place. Configuration files are also written with mode `0600`.
+- **Source protection.** `report` and `export` refuse to overwrite their input session (file-identity check).
+- **Sensitive data.** Sessions store request paths, including query strings, and may contain tokens or identifiers. Treat them as local diagnostics and review them before sharing. Nothing is redacted automatically.
+
+### Supply chain
 
 ```text
-                     Pull Request / Push
+                     pull request / push
                               │
-             ┌────────────────┼─────────────────┐
-             ▼                ▼                 ▼
-          Go CI           Security             CodeQL
-             │                │                 │
-      tests + vet       govulncheck       static analysis
-                          + race
-             │                │                 │
-             └────────────────┼─────────────────┘
+           ┌──────────────────┼──────────────────┐
+           ▼                  ▼                  ▼
+         Go CI            Security            CodeQL
+     test + vet on      govulncheck +     static analysis
+     linux/win/mac      go test -race
+           │                  │                  │
+           └──────────────────┼──────────────────┘
                               ▼
-                    dependency review
+                      dependency review
                               │
                               ▼
-                         Dependabot
+                 Dependabot (gomod, actions)
 ```
-
-The repository also uses release checksums for published binaries.
-
-Security tooling is intended to catch dependency vulnerabilities, concurrency defects, and common source-level issues before releases.
 
 ---
 
-## Release Engineering
+## Release engineering
 
-Release builds are generated from version tags through GitHub Actions and GoReleaser.
-
-Target matrix:
+Pushing a `v*.*.*` tag runs `.github/workflows/release.yml`:
 
 ```text
-              GoReleaser
-                  │
-        ┌─────────┼─────────┐
-        ▼         ▼         ▼
-      Linux     Windows    macOS
-      amd64      amd64     amd64
-      arm64      arm64     arm64
+  tag v1.2.3
+      │
+      ▼
+  go test ./...  (Go 1.27.3)
+      │
+      ▼
+  GoReleaser v2  ─►  CGO_ENABLED=0, ldflags -s -w -X main.version
+      │
+      ├─►  linux   amd64 · arm64   tar.gz
+      ├─►  darwin  amd64 · arm64   tar.gz
+      ├─►  windows amd64 · arm64   zip
+      │
+      ▼
+  checksums.txt  ─►  actions/attest-build-provenance (OIDC, SLSA provenance)
 ```
-
-Each release publishes platform-specific archives plus a checksum manifest.
 
 ---
 
 ## Development
 
-Run the local quality gates:
-
 ```bash
-go test ./...
+go build ./...
 go vet ./...
-```
-
-Security-oriented local checks can be run with:
-
-```bash
-go test -race ./...
+go test ./...
+go test -race ./...          # needs cgo / a C toolchain
 govulncheck ./...
+GOOS=darwin go vet ./...     # vet another platform's build-tagged files
 ```
 
-GitHub Actions runs the project checks across Linux, Windows, and macOS.
+Guidelines:
+
+- **Test first.** Every bug fix lands with a test that failed before the fix.
+- **Keep OS code thin.** Put parsing in untagged pure functions so it is tested on every CI platform. Only the `exec.Command` call belongs in a `*_<goos>.go` file.
+- **Keep output deterministic.** Sort anything derived from map iteration before printing or serializing.
+- **Commit style.** Conventional commits: `fix(scope): …`, `feat(scope): …`, `docs(scope): …`, `ci(scope): …`.
+
+---
+
+## Known limitations
+
+| Area | Current behavior |
+| --- | --- |
+| Recorder | Keeps only the newest 1000 requests per capture |
+| Latency | Measured to upstream response headers. Body transfer time is excluded |
+| Bytes | Taken from `Content-Length`. `-1` for chunked or compressed responses of unknown length |
+| Shutdown | Waits for in-flight requests without a deadline. Long-lived streams (SSE) can delay exit |
+| Target | `--target` must include a scheme (`http://`). A bare `host:port` is not rejected yet |
+| JSON | Some empty collections serialize as `null` rather than `[]` |
+| Probing | Probes use `127.0.0.1`. Services bound only to `::1` or a LAN address are listed but not identified as HTTP |
 
 ---
 
 ## Roadmap
 
-### v0.2 — Local Change Intelligence
+### v0.2: local change intelligence
 
 ```text
-endpoint normalization
-        │
-        ▼
-     baseline
-        │
-        ▼
- change detection
-        │
-        ▼
- anomaly detection
-        │
-        ▼
-dependency correlation
-        │
-        ▼
-     timeline
-        │
-        ▼
- actionable diagnosis
+endpoint normalization ─► baseline ─► change detection ─► anomaly detection
+                                                                  │
+                                                                  ▼
+                 actionable diagnosis ◄── timeline ◄── dependency correlation
 ```
 
-The goal is to make DevPulse answer a more useful question than **"what is running?"**:
+The goal is to answer a more useful question than *"what is running?"*:
 
-> **"What changed in my local environment, and what did that change affect?"**
+> **What changed in my local environment, and what did that change affect?**
 
 ---
 
@@ -497,19 +441,14 @@ The goal is to make DevPulse answer a more useful question than **"what is runni
 
 Issues and pull requests are welcome.
 
-Recommended contribution loop:
-
 ```bash
-git checkout -b feature/<name>
-go test ./...
-go vet ./...
-git commit -m "feat(scope): describe change"
+git checkout -b fix/<name>
+go test ./... && go vet ./...
+git commit -m "fix(scope): describe the change"
 ```
 
-Keep changes focused, tested, and platform-aware.
-
----
+Keep changes focused, tested and platform-aware.
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)

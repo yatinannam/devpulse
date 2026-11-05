@@ -31,6 +31,7 @@ func runReportWithFormat(sessionPath, outputPath, title string, top int, format 
 		if err := encoder.Encode(result); err != nil { return fmt.Errorf("encode JSON report: %w", err) }
 	} else if err := report.Render(&content, result); err != nil { return err }
 	if outputPath == "-" { _, err := io.WriteString(stdout, content.String()); return err }
+	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil { return err }
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil { return fmt.Errorf("create report directory: %w", err) }
 	tmp, err := os.CreateTemp(dir, ".devpulse-report-*.tmp")
@@ -51,7 +52,7 @@ func reportCommand(args []string) {
 	format := fs.String("format", "markdown", "report format: markdown or json")
 	title := fs.String("title", "DevPulse Traffic Report", "report heading")
 	top := fs.Int("top", 5, "number of slowest requests to include (0 disables)")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 	if *format == "json" && *out == "devpulse-report.md" { *out = "devpulse-report.json" }
 	if err := runReportWithFormat(*from, *out, *title, *top, *format, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)

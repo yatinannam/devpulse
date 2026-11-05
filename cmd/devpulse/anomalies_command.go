@@ -24,7 +24,7 @@ func anomaliesCommand(args []string) {
 	baselinePath := fs.String("baseline", baseline.Path("."), "baseline snapshot to compare against")
 	sessionPathFlag := fs.String("session", sessionPath(), "current traffic session")
 	jsonOutput := fs.Bool("json", false, "print findings as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	base, err := baseline.Load(*baselinePath)
 	if err != nil {

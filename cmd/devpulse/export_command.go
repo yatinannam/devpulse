@@ -74,16 +74,8 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 		}
 		return nil
 	}
-	inputAbs, err := filepath.Abs(sessionPath)
-	if err != nil {
-		return fmt.Errorf("resolve session path: %w", err)
-	}
-	outputAbs, err := filepath.Abs(outputPath)
-	if err != nil {
-		return fmt.Errorf("resolve output path: %w", err)
-	}
-	if inputAbs == outputAbs {
-		return fmt.Errorf("output path must differ from the source session")
+	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil {
+		return err
 	}
 	if err := writeExportFile(outputPath, content.Bytes()); err != nil {
 		return err
@@ -101,7 +93,7 @@ func exportCommand(args []string) {
 	limit := fs.Int("limit", 0, "maximum number of matching requests to export (0 means unlimited)")
 	sinceText := fs.String("since", "", "include requests at or after RFC3339 timestamp")
 	untilText := fs.String("until", "", "include requests at or before RFC3339 timestamp")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	since, err := parseExportTime("--since", *sinceText)
 	if err != nil {

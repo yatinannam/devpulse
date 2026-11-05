@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,5 +17,60 @@ func TestAnalyzeDuplicateRequests(t *testing.T) {
 	findings := Analyze(entries)
 	if len(findings) != 1 || findings[0].Title != "Duplicate requests" {
 		t.Fatalf("unexpected findings: %#v", findings)
+	}
+}
+
+func TestAnalyzeDetectsSustainedRequestLoop(t *testing.T) {
+	// A runaway effect hitting the same endpoint every 100ms for 10s spans
+	// more than the 3s window end to end, but every 3s slice holds ~30 calls.
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var entries []traffic.Request
+	for i := 0; i < 100; i++ {
+		entries = append(entries, traffic.Request{Time: base.Add(time.Duration(i) * 100 * time.Millisecond), Method: "GET", Path: "/api/users", Status: 200})
+	}
+	findings := Analyze(entries)
+	if len(findings) != 1 || findings[0].Title != "Duplicate requests" {
+		t.Fatalf("expected a duplicate-request finding, got %#v", findings)
+	}
+}
+
+func TestAnalyzeDetectsBurstFollowedByLateRequest(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var entries []traffic.Request
+	for i := 0; i < 5; i++ {
+		entries = append(entries, traffic.Request{Time: base.Add(time.Duration(i) * 200 * time.Millisecond), Method: "GET", Path: "/api/users", Status: 200})
+	}
+	entries = append(entries, traffic.Request{Time: base.Add(5 * time.Minute), Method: "GET", Path: "/api/users", Status: 200})
+	findings := Analyze(entries)
+	if len(findings) != 1 || findings[0].Title != "Duplicate requests" {
+		t.Fatalf("expected a duplicate-request finding, got %#v", findings)
+	}
+	if !strings.Contains(findings[0].Detail, "called 5 times") {
+		t.Fatalf("finding should describe the 5-request burst, got %q", findings[0].Detail)
+	}
+}
+
+func TestAnalyzeIgnoresSpreadOutRequests(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var entries []traffic.Request
+	for i := 0; i < 10; i++ {
+		entries = append(entries, traffic.Request{Time: base.Add(time.Duration(i) * 2 * time.Second), Method: "GET", Path: "/api/users", Status: 200})
+	}
+	if findings := Analyze(entries); len(findings) != 0 {
+		t.Fatalf("requests 2s apart should not trip a 3-in-3s rule, got %#v", findings)
+	}
+}
+
+func TestAnalyzeReturnsEmptyNotNilWithoutFindings(t *testing.T) {
+	// docs/diagnostic-profiles.md promises `"findings": []`, and a nil slice
+	// encodes as null, which breaks `jq '.findings[]'` and similar consumers.
+	clean := []traffic.Request{{Time: time.Now(), Method: "GET", Path: "/ok", Status: 200}}
+	for name, entries := range map[string][]traffic.Request{"empty session": nil, "clean session": clean} {
+		if got := Analyze(entries); got == nil {
+			t.Errorf("%s: Analyze returned nil, want an empty slice", name)
+		}
+	}
+	if got := AnalyzeWithProfile(clean, Profile("bogus")); got == nil {
+		t.Error("unknown profile: AnalyzeWithProfile returned nil, want an empty slice")
 	}
 }

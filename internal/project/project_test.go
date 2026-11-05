@@ -39,3 +39,17 @@ func TestSelectTargetNoHTTPService(t *testing.T) {
 		t.Fatalf("got %+v, ok=%v", got, ok)
 	}
 }
+
+func TestSelectTargetNeverPicksDevPulseProxy(t *testing.T) {
+	services := []discovery.Service{
+		{Port: 9090, HTTP: true, URL: "http://127.0.0.1:9090", Kind: discovery.KindDevPulseProxy},
+		{Port: 4321, HTTP: true, URL: "http://127.0.0.1:4321"},
+	}
+	got, ok := SelectTarget(Info{Kind: "Node.js"}, services)
+	if !ok || got.Port != 4321 {
+		t.Fatalf("got %+v, ok=%v; want the app on 4321, not the proxy", got, ok)
+	}
+	if _, ok := SelectTarget(Info{}, services[:1]); ok {
+		t.Fatal("the DevPulse proxy alone must not be selected as a target")
+	}
+}

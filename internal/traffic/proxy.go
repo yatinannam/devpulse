@@ -85,8 +85,22 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 
 type startKey struct{}
 
+// ProbeHeader marks DevPulse's own service-discovery requests. The proxy
+// answers them itself with ProxyHeader set, so `status`, `watch` and `init`
+// can recognise the proxy without their probes being forwarded upstream or
+// recorded into the captured session.
+const (
+	ProbeHeader = "X-DevPulse-Probe"
+	ProxyHeader = "X-DevPulse-Proxy"
+)
+
 func Handler(proxy http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(ProbeHeader) != "" {
+			w.Header().Set(ProxyHeader, "1")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		ctx := context.WithValue(r.Context(), startKey{}, time.Now())
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})

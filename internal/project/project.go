@@ -48,7 +48,8 @@ func Detect(dir string) (Info, error) {
 func SelectTarget(info Info, services []discovery.Service) (discovery.Service, bool) {
 	candidates := make([]discovery.Service, 0, len(services))
 	for _, s := range services {
-		if s.HTTP {
+		// Never target DevPulse's own proxy: traffic would loop back into itself.
+		if s.HTTP && s.Kind != discovery.KindDevPulseProxy {
 			candidates = append(candidates, s)
 		}
 	}

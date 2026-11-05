@@ -49,11 +49,12 @@ func Analyze(entries []traffic.Request) []Finding {
 
 // AnalyzeWithProfile applies an explicit, deterministic threshold profile.
 func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
+	// Always return a non-nil slice: JSON consumers are promised `[]`, not null.
+	findings := []Finding{}
 	thresholds, err := ThresholdsFor(profile)
 	if err != nil || len(entries) == 0 {
-		return nil
+		return findings
 	}
-	var findings []Finding
 	var errors, slow int
 	for _, e := range entries {
 		if e.Status >= thresholds.ErrorStatus {
@@ -91,9 +92,20 @@ func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
 			continue
 		}
 		sort.Slice(group, func(i, j int) bool { return group[i].Time.Before(group[j].Time) })
-		first, last := group[0].Time, group[len(group)-1].Time
-		if last.Sub(first) <= thresholds.DuplicateWindow {
-			duplicates = append(duplicates, duplicate{k, len(group), first, last})
+		// Slide a window across the group and keep the densest burst, so a
+		// sustained loop or a burst followed by a late straggler is still caught.
+		best := duplicate{k: k}
+		start := 0
+		for end := range group {
+			for group[end].Time.Sub(group[start].Time) > thresholds.DuplicateWindow {
+				start++
+			}
+			if count := end - start + 1; count > best.count {
+				best.count, best.first, best.last = count, group[start].Time, group[end].Time
+			}
+		}
+		if best.count >= thresholds.MinDuplicateRequests {
+			duplicates = append(duplicates, best)
 		}
 	}
 	sort.Slice(duplicates, func(i, j int) bool {

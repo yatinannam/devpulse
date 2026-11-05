@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+func TestDefaultListenIsLoopbackOnly(t *testing.T) {
+	// An all-interfaces default such as ":9090" exposes the proxied dev app
+	// and its recorder to the whole local network.
+	if got := Default().Listen; got != "127.0.0.1:9090" {
+		t.Fatalf("default listen = %q, want 127.0.0.1:9090", got)
+	}
+}
+
 func TestSaveLoad(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("DEVPULSE_CONFIG", p)
