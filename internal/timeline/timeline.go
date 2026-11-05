@@ -17,7 +17,8 @@ type Bucket struct {
 // Build groups captured requests into fixed-size chronological buckets.
 func Build(entries []traffic.Request, width time.Duration) []Bucket {
 	if len(entries) == 0 || width <= 0 {
-		return nil
+		// Never nil: JSON consumers are promised `[]`, not null.
+		return []Bucket{}
 	}
 	// Key by Unix nanoseconds, not time.Time: map equality on time.Time also
 	// compares the *Location pointer, so the same instant decoded with two

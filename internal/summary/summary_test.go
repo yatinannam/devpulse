@@ -38,6 +38,24 @@ func TestSlowestDoesNotMutateInput(t *testing.T) {
     }
 }
 
+func TestSlowestEmptyResultsMarshalAsEmptyArray(t *testing.T) {
+	entries := []traffic.Request{{Latency: 10}}
+	cases := map[string][]traffic.Request{
+		"zero limit":     Slowest(entries, 0),
+		"negative limit": Slowest(entries, -1),
+		"no entries":     Slowest(nil, 5),
+	}
+	for name, got := range cases {
+		data, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "[]" {
+			t.Errorf("%s: got %s, want []", name, data)
+		}
+	}
+}
+
 func TestReportJSONUsesStableFieldNames(t *testing.T) {
 	report := Build([]traffic.Request{{Status: 500, Latency: 25 * time.Millisecond}})
 	data, err := json.Marshal(report)

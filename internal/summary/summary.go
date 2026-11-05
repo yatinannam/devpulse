@@ -36,7 +36,8 @@ func Build(entries []traffic.Request) Report {
 }
 
 func Slowest(entries []traffic.Request, limit int) []traffic.Request {
-    if limit <= 0 || len(entries) == 0 { return nil }
+    // Never nil: JSON consumers are promised `[]`, not null.
+    if limit <= 0 || len(entries) == 0 { return []traffic.Request{} }
     out := append([]traffic.Request(nil), entries...)
     sort.SliceStable(out, func(i, j int) bool { return out[i].Latency > out[j].Latency })
     if limit > len(out) { limit = len(out) }

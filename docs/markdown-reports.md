@@ -16,7 +16,7 @@ devpulse report --format json --out -
 
 ## JSON output
 
-Use `--format json` to emit machine-readable report data. JSON includes a stable set of snake_case field names for report metadata, aggregate summary metrics, endpoint statistics, status-code counts, slow requests, and diagnostic findings. When `--out` is omitted, JSON output defaults to `devpulse-report.json`; an explicit output path always takes precedence.
+Use `--format json` to emit machine-readable report data. JSON includes a stable set of snake_case field names for report metadata, aggregate summary metrics, endpoint statistics, status-code counts, slow requests, and diagnostic findings. Collection fields are always JSON arrays: an empty collection, such as `slowest_requests` with `--top 0`, is written as `[]`, never `null`. When `--out` is omitted, JSON output defaults to `devpulse-report.json`; an explicit output path always takes precedence.
 
 ## Markdown report sections
 

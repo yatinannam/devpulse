@@ -24,7 +24,8 @@ type Change struct {
 }
 
 func Compare(base, current baseline.Snapshot) []Change {
-	var out []Change
+	// Never nil: JSON consumers are promised `[]`, not null.
+	out := []Change{}
 	baseServices := map[int]baseline.Service{}
 	currentServices := map[int]baseline.Service{}
 	for _, s := range base.Services {

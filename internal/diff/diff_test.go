@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -47,7 +48,18 @@ func TestCompareReportsRemovedEndpoints(t *testing.T) {
 
 func TestCompareIgnoresIdenticalSnapshots(t *testing.T) {
 	snapshot := baseline.Snapshot{Requests: baseline.Traffic{Total: 2}}
-	if got := Compare(snapshot, snapshot); got != nil {
+	if got := Compare(snapshot, snapshot); len(got) != 0 {
 		t.Fatalf("got changes for identical snapshots: %#v", got)
+	}
+}
+
+func TestCompareWithoutChangesMarshalsAsEmptyArray(t *testing.T) {
+	snapshot := baseline.Snapshot{Requests: baseline.Traffic{Total: 2}}
+	data, err := json.Marshal(Compare(snapshot, snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "[]" {
+		t.Fatalf("got %s, want []", data)
 	}
 }

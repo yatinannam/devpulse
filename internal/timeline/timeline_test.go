@@ -1,6 +1,7 @@
 package timeline
 
 import (
+    "encoding/json"
     "testing"
     "time"
 
@@ -29,9 +30,27 @@ func TestBuildOrdersBucketsAndCountsErrors(t *testing.T) {
 
 func TestBuildRejectsInvalidWidth(t *testing.T) {
     entries := []traffic.Request{{Time: time.Now(), Status: 200}}
-    if got := Build(entries, 0); got != nil {
-        t.Fatalf("got %#v for zero width, want nil", got)
+    if got := Build(entries, 0); len(got) != 0 {
+        t.Fatalf("got %#v for zero width, want no buckets", got)
     }
+}
+
+func TestBuildEmptyResultsMarshalAsEmptyArray(t *testing.T) {
+	entries := []traffic.Request{{Time: time.Now(), Status: 200}}
+	cases := map[string][]Bucket{
+		"no entries":     Build(nil, time.Minute),
+		"zero width":     Build(entries, 0),
+		"negative width": Build(entries, -time.Second),
+	}
+	for name, got := range cases {
+		data, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "[]" {
+			t.Errorf("%s: got %s, want []", name, data)
+		}
+	}
 }
 
 func TestBuildMergesEqualInstantsFromDifferentLocations(t *testing.T) {

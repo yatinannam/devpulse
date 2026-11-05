@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -77,6 +78,33 @@ func TestBuildEmptySessionHasEmptyCollections(t *testing.T) {
 	got := Build(traffic.Session{}, Options{Top: 5})
 	if got.Summary.Total != 0 || len(got.StatusCodes) != 0 || len(got.Endpoints) != 0 || len(got.Slowest) != 0 || len(got.Findings) != 0 {
 		t.Fatalf("unexpected empty report: %+v", got)
+	}
+}
+
+func TestBuildJSONEmitsEmptyArraysNotNull(t *testing.T) {
+	cases := map[string]Report{
+		"top zero":      Build(sampleSession(), Options{Top: 0}),
+		"empty session": Build(traffic.Session{}, Options{Top: 5}),
+	}
+	for name, got := range cases {
+		data, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if string(decoded["slowest_requests"]) != "[]" {
+			t.Errorf("%s: slowest_requests = %s, want []", name, decoded["slowest_requests"])
+		}
+		if name == "empty session" {
+			for _, key := range []string{"status_codes", "endpoints", "findings"} {
+				if string(decoded[key]) != "[]" {
+					t.Errorf("%s: %s = %s, want []", name, key, decoded[key])
+				}
+			}
+		}
 	}
 }
 
