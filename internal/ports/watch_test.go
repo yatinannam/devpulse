@@ -69,3 +69,40 @@ func TestWatchSurvivesTransientListFailures(t *testing.T) {
 		t.Fatalf("expected port 3000 to be reported closed after the failure, got %#v", removed)
 	}
 }
+
+func TestWatchReportsRestartWithNewPIDOnSamePort(t *testing.T) {
+	// nodemon or air can restart a server between two polls: the port stays
+	// open but the process behind it is new.
+	polls := [][]Entry{
+		{{Port: 3000, Process: "node", PID: "100"}, {Port: 5432, Process: "postgres", PID: "7"}},
+		{{Port: 3000, Process: "node", PID: "200"}, {Port: 5432, Process: "postgres", PID: "7"}},
+		{{Port: 3000, Process: "node", PID: "200"}, {Port: 5432, Process: "postgres", PID: "7"}},
+	}
+	call := 0
+	list := func() ([]Entry, error) {
+		p := polls[call]
+		call++
+		return p, nil
+	}
+	ticks := make(chan time.Time, 2)
+	ticks <- time.Time{}
+	ticks <- time.Time{}
+	close(ticks)
+
+	type change struct{ added, removed []Entry }
+	var changes []change
+	err := watchWith(ticks, list, func(a, r []Entry) { changes = append(changes, change{a, r}) }, nil)
+	if err != nil {
+		t.Fatalf("watchWith returned %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("got %d change events, want 1 for the restart and none for the unchanged poll: %#v", len(changes), changes)
+	}
+	got := changes[0]
+	if len(got.removed) != 1 || got.removed[0] != (Entry{Port: 3000, Process: "node", PID: "100"}) {
+		t.Fatalf("removed = %#v, want the old node process on 3000", got.removed)
+	}
+	if len(got.added) != 1 || got.added[0] != (Entry{Port: 3000, Process: "node", PID: "200"}) {
+		t.Fatalf("added = %#v, want the new node process on 3000", got.added)
+	}
+}

@@ -218,7 +218,7 @@ On every OS, a dual-stack server (for example `0.0.0.0:22` plus `[::]:22`) is li
 
 The netstat, tasklist, ss and lsof parsers are pure functions in untagged files, with fixture tests that run on every CI platform.
 
-`ports --watch` diffs consecutive snapshots keyed by port. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
+`ports --watch` diffs consecutive snapshots keyed by port. A new PID on a port that stayed open, such as a restart by nodemon or air between two polls, is reported as the old process closing and the new one opening. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
 
 ### HTTP probing and fingerprinting
 

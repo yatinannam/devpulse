@@ -48,7 +48,14 @@ func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange fu
 
 		var added, removed []Entry
 		for port, entry := range current {
-			if _, ok := previous[port]; !ok {
+			old, ok := previous[port]
+			if !ok {
+				added = append(added, entry)
+			} else if old.PID != entry.PID {
+				// A restart within one tick (nodemon, air) keeps the port
+				// but changes the PID: report the old process as closed and
+				// the new one as opened.
+				removed = append(removed, old)
 				added = append(added, entry)
 			}
 		}
