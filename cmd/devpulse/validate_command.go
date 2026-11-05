@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -23,7 +22,7 @@ func runValidate(path string, jsonOutput bool, out io.Writer) (int, error) {
 		return 1, fmt.Errorf("read session: %w", err)
 	}
 	var s traffic.Session
-	if err := json.Unmarshal(data, &s); err != nil {
+	if s, err = traffic.DecodeSession(data); err != nil {
 		return 1, fmt.Errorf("decode session: %w", err)
 	}
 	report := sessioncheck.Validate(s)

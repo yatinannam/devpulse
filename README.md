@@ -195,7 +195,7 @@ Each captured request becomes one record:
 | `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
 | `targetHost`, `targetPort` | string, int | Parsed from `--target` |
 
-Sessions are versioned (`"version": 1`); readers reject unknown versions. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
+Sessions are versioned (`"version": 1`); readers reject unknown versions and ignore a leading UTF-8 byte order mark, such as the one Windows PowerShell 5.1 adds when it re-saves a file. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
 
 ```bash
 devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090 --max-requests 50000

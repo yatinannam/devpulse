@@ -43,6 +43,7 @@ Sessions captured by earlier DevPulse releases measured `latency` only until the
 
 - `version: 1` is the only supported version at present.
 - Readers reject unknown versions rather than guessing at their meaning.
+- DevPulse writes sessions as UTF-8 without a byte order mark. Every command that reads a session, including `devpulse validate`, ignores a leading UTF-8 BOM, so a session re-saved by Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`, `Out-File`) still loads. Other readers that use a strict JSON parser may need to strip the BOM (`EF BB BF`) themselves.
 - Use `devpulse validate` to check required fields and request invariants before consuming a session in automation.
 
 ## Data handling
