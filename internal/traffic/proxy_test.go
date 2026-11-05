@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,6 +28,10 @@ func TestProxyRecordsRequest(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("got status %d, want 200", resp.StatusCode)
 	}
+	// The request is recorded once its body has streamed; closing the server
+	// waits for that.
+	_, _ = io.ReadAll(resp.Body)
+	server.Close()
 	entries := recorder.Snapshot()
 	if len(entries) != 1 {
 		t.Fatalf("got %d recorded requests, want 1", len(entries))

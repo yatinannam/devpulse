@@ -68,14 +68,27 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		recorder.Add(Request{Time: start, Method: req.Method, Path: req.URL.RequestURI(), Status: status, Latency: time.Since(start), Bytes: bytes, TargetHost: u.Hostname(), TargetPort: port})
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		if start, ok := resp.Request.Context().Value(startKey{}).(time.Time); ok {
-			record(resp.Request, resp.StatusCode, resp.ContentLength, start)
+		state, ok := resp.Request.Context().Value(stateKey{}).(*requestState)
+		if !ok {
+			return nil
 		}
+		req, status := resp.Request, resp.StatusCode
+		finish := func(bytes int64) {
+			state.once.Do(func() { record(req, status, bytes, state.start) })
+		}
+		if status == http.StatusSwitchingProtocols {
+			// ReverseProxy needs the original read-write body to tunnel an
+			// upgraded connection, so record the upgrade itself and leave the
+			// body alone.
+			finish(0)
+			return nil
+		}
+		resp.Body = &countingBody{ReadCloser: resp.Body, done: finish}
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
-		if start, ok := req.Context().Value(startKey{}).(time.Time); ok {
-			record(req, 502, 0, start)
+		if state, ok := req.Context().Value(stateKey{}).(*requestState); ok {
+			record(req, 502, 0, state.start)
 		}
 		log.Printf("proxy error: %s %v", req.URL.RequestURI(), err)
 		http.Error(w, "devpulse proxy error", 502)
@@ -83,7 +96,39 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 	return proxy, nil
 }
 
-type startKey struct{}
+type stateKey struct{}
+
+// requestState is the per-request bookkeeping Handler stores in the request
+// context. once guarantees a proxied request is recorded exactly once, by
+// whichever of the response body or the error handler finishes it first.
+type requestState struct {
+	start time.Time
+	once  sync.Once
+}
+
+// countingBody wraps an upstream response body. It counts the bytes the proxy
+// streams to the client and reports the total when the body reaches EOF or is
+// closed, whichever happens first. ReverseProxy reads and closes the body on
+// the handler goroutine, so the counter needs no locking.
+type countingBody struct {
+	io.ReadCloser
+	n    int64
+	done func(n int64)
+}
+
+func (b *countingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.n += int64(n)
+	if err == io.EOF {
+		b.done(b.n)
+	}
+	return n, err
+}
+
+func (b *countingBody) Close() error {
+	b.done(b.n)
+	return b.ReadCloser.Close()
+}
 
 // ProbeHeader marks DevPulse's own service-discovery requests. The proxy
 // answers them itself with ProxyHeader set, so `status`, `watch` and `init`
@@ -101,7 +146,7 @@ func Handler(proxy http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		ctx := context.WithValue(r.Context(), startKey{}, time.Now())
+		ctx := context.WithValue(r.Context(), stateKey{}, &requestState{start: time.Now()})
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -164,11 +164,12 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
   client ──────► 127.0.0.1:9090 ──────► target (default http://localhost:3000)
                  │
                  │  traffic.Handler
-                 │    stamps start time in the request context
+                 │    stores per-request state (start time, record-once guard)
                  │    answers X-DevPulse-Probe itself (never forwarded)
                  │
                  │  httputil.ReverseProxy
-                 │    ModifyResponse ─► record status, latency, bytes
+                 │    ModifyResponse ─► wrap the body in a byte counter
+                 │    body EOF/close ─► record status, latency, bytes (once)
                  │    ErrorHandler   ─► record synthetic 502
                  ▼
             Recorder (mutex-guarded, keeps the newest 1000 requests)
@@ -186,8 +187,8 @@ Each captured request becomes one record:
 | `method` | string | Request method |
 | `path` | string | Upstream request URI, including the query string |
 | `status` | int | Upstream status, or `502` if the upstream could not be reached |
-| `latency` | int (ns) | Receive time until upstream response headers |
-| `bytes` | int | Upstream `Content-Length`, `-1` when unknown (for example chunked) |
+| `latency` | int (ns) | Receive time until the response body finished streaming |
+| `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
 | `targetHost`, `targetPort` | string, int | Parsed from `--target` |
 
 Sessions are versioned (`"version": 1`); readers reject unknown versions. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
