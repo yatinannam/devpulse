@@ -60,3 +60,17 @@ func TestAnalyzeIgnoresSpreadOutRequests(t *testing.T) {
 		t.Fatalf("requests 2s apart should not trip a 3-in-3s rule, got %#v", findings)
 	}
 }
+
+func TestAnalyzeReturnsEmptyNotNilWithoutFindings(t *testing.T) {
+	// docs/diagnostic-profiles.md promises `"findings": []`, and a nil slice
+	// encodes as null, which breaks `jq '.findings[]'` and similar consumers.
+	clean := []traffic.Request{{Time: time.Now(), Method: "GET", Path: "/ok", Status: 200}}
+	for name, entries := range map[string][]traffic.Request{"empty session": nil, "clean session": clean} {
+		if got := Analyze(entries); got == nil {
+			t.Errorf("%s: Analyze returned nil, want an empty slice", name)
+		}
+	}
+	if got := AnalyzeWithProfile(clean, Profile("bogus")); got == nil {
+		t.Error("unknown profile: AnalyzeWithProfile returned nil, want an empty slice")
+	}
+}

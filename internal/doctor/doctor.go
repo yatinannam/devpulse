@@ -49,11 +49,12 @@ func Analyze(entries []traffic.Request) []Finding {
 
 // AnalyzeWithProfile applies an explicit, deterministic threshold profile.
 func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
+	// Always return a non-nil slice: JSON consumers are promised `[]`, not null.
+	findings := []Finding{}
 	thresholds, err := ThresholdsFor(profile)
 	if err != nil || len(entries) == 0 {
-		return nil
+		return findings
 	}
-	var findings []Finding
 	var errors, slow int
 	for _, e := range entries {
 		if e.Status >= thresholds.ErrorStatus {
