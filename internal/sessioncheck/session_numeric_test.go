@@ -36,4 +36,28 @@ func TestValidateIssueOrderAndRequestIndicesAreStable(t *testing.T) {
 		if issue.Code == "invalid_status" && issue.Request == 2 { seenSecondStatus = true }
 	}
 	if !seenFirstTimestamp || !seenSecondStatus { t.Fatalf("request indices not one-based: %+v", got.Issues) }
+
+	// docs/session-validation.md promises session order, then a fixed
+	// field-check order within each request. Reordering the checks in
+	// Validate must fail this test.
+	want := []struct {
+		request int
+		code    string
+	}{
+		{1, "missing_timestamp"},
+		{1, "missing_method"},
+		{1, "invalid_path"},
+		{1, "invalid_status"},
+		{1, "negative_latency"},
+		{1, "invalid_target_port"},
+		{2, "invalid_status"},
+	}
+	if len(got.Issues) != len(want) {
+		t.Fatalf("got %d issues, want %d: %+v", len(got.Issues), len(want), got.Issues)
+	}
+	for i, w := range want {
+		if got.Issues[i].Request != w.request || got.Issues[i].Code != w.code {
+			t.Fatalf("issue %d = request %d %q, want request %d %q (all: %+v)", i, got.Issues[i].Request, got.Issues[i].Code, w.request, w.code, got.Issues)
+		}
+	}
 }
