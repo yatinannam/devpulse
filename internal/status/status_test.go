@@ -33,8 +33,8 @@ func TestNormalizeEndpointPath(t *testing.T) {
 		"/health": "/health",
 	}
 	for input, want := range cases {
-		if got := normalizeEndpointPath(input); got != want {
-			t.Errorf("normalizeEndpointPath(%q) = %q, want %q", input, got, want)
+		if got := NormalizeEndpointPath(input); got != want {
+			t.Errorf("NormalizeEndpointPath(%q) = %q, want %q", input, got, want)
 		}
 	}
 }

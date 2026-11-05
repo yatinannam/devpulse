@@ -259,7 +259,7 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 
 All analysis is deterministic for a given session and never modifies it.
 
-**Endpoint normalization** (`status`, `baseline`, `diff`, `anomalies`) strips the query string and fragment, then replaces numeric and UUID path segments with `:id`. For example, `/users/42?tab=1` becomes `/users/:id`.
+**Endpoint normalization** (`status`, `baseline`, `diff`, `anomalies`, and the `report` endpoint table) strips the query string and fragment, then replaces numeric and UUID path segments with `:id`. For example, `/users/42?tab=1` becomes `/users/:id`.
 
 **Percentiles** use the nearest-rank method on a sorted copy: `p = sorted[ceil(q·n) − 1]`.
 

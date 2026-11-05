@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,36 @@ func TestBuildEndpointsSortedByVolumeThenErrors(t *testing.T) {
 	}
 	if got.Endpoints[0].Average != 450*time.Millisecond || got.Endpoints[0].ErrorRate != 0.5 {
 		t.Fatalf("unexpected endpoint metrics: %+v", got.Endpoints[0])
+	}
+}
+
+func TestBuildEndpointsGroupByNormalizedPath(t *testing.T) {
+	created := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	session := traffic.Session{Version: 1, CreatedAt: created}
+	for i := 1; i <= 500; i++ {
+		session.Requests = append(session.Requests, traffic.Request{Time: created, Method: "GET", Path: fmt.Sprintf("/items/%d", i), Status: 200, Latency: time.Millisecond})
+	}
+	session.Requests = append(session.Requests,
+		traffic.Request{Time: created, Method: "GET", Path: "/search?id=1", Status: 200, Latency: time.Millisecond},
+		traffic.Request{Time: created, Method: "GET", Path: "/search?id=2#top", Status: 500, Latency: 3 * time.Millisecond},
+		traffic.Request{Time: created, Method: "DELETE", Path: "/users/123e4567-e89b-12d3-a456-426614174000", Status: 204, Latency: time.Millisecond},
+	)
+	got := Build(session, Options{Top: 1})
+	want := []Endpoint{
+		{Method: "GET", Path: "/items/:id", Requests: 500, Average: time.Millisecond},
+		{Method: "GET", Path: "/search", Requests: 2, Errors: 1, ErrorRate: 0.5, Average: 2 * time.Millisecond},
+		{Method: "DELETE", Path: "/users/:id", Requests: 1, Average: time.Millisecond},
+	}
+	if len(got.Endpoints) != len(want) {
+		t.Fatalf("got %d endpoints, want %d: %+v", len(got.Endpoints), len(want), got.Endpoints[:min(len(got.Endpoints), 5)])
+	}
+	for i := range want {
+		if got.Endpoints[i] != want[i] {
+			t.Errorf("endpoint %d = %+v, want %+v", i, got.Endpoints[i], want[i])
+		}
+	}
+	if got.Slowest[0].Path != "/search?id=2#top" {
+		t.Errorf("slowest requests should keep the raw path, got %q", got.Slowest[0].Path)
 	}
 }
 

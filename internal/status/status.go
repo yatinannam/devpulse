@@ -49,7 +49,7 @@ type Endpoint struct {
 	Average       time.Duration
 }
 
-func normalizeEndpointPath(raw string) string {
+func NormalizeEndpointPath(raw string) string {
 	path := raw
 	if i := strings.IndexAny(path, "?#"); i >= 0 {
 		path = path[:i]
@@ -102,7 +102,7 @@ func isUUID(s string) bool {
 func Endpoints(entries []traffic.Request) []Endpoint {
 	m := map[string]*Endpoint{}
 	for _, e := range entries {
-		path := normalizeEndpointPath(e.Path)
+		path := NormalizeEndpointPath(e.Path)
 		key := e.Method + " " + path
 		x := m[key]
 		if x == nil {

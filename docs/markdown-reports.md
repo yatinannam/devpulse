@@ -30,14 +30,14 @@ Durations are integer nanoseconds and timestamps are RFC3339 strings. Strings ar
 | `slowest_requests[]` | `time`, `method`, `path`, `status`, `latency`, `bytes`, `target_host`, `target_port` |
 | `findings[]` | `level`, `title`, `detail`, `advice` |
 
-`slowest_requests[]` keeps the raw captured path, including any query string.
+`endpoints[].path` is the normalized endpoint path described below. `slowest_requests[].path` keeps the raw captured path, including any query string.
 
 ## Markdown report sections
 
 Sections appear in this order:
 
 - **Summary:** request and error counts, error rate, average latency, and P50/P95/P99 latency.
-- **Top endpoints:** request count, error count/rate, and average latency for each method/path pair.
+- **Top endpoints:** request count, error count/rate, and average latency for each method and normalized path. Normalization matches `status`, `baseline` and `diff`: the query string and fragment are removed and numeric and UUID segments become `:id`, so `/items/1?tab=a` and `/items/2` share the row `/items/:id`.
 - **HTTP status codes:** observed status distribution in numeric order.
 - **Slowest requests:** timestamp, method, path, status, and latency for up to `--top` requests. With `--top 0` the table is replaced by a line saying the details were omitted with `--top 0`; an empty session shows a `No requests` row instead.
 - **Diagnostic findings:** deterministic findings from the default DevPulse doctor profile and actionable advice.

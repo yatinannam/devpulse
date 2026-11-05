@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/doctor"
+	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/summary"
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
@@ -86,10 +87,13 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 	groups := make(map[endpointKey]*Endpoint)
 	totals := make(map[endpointKey]time.Duration)
 	for _, entry := range entries {
-		key := endpointKey{entry.Method, entry.Path}
+		// Group like status, baseline and diff do: /items/1 and /items/2?x=y
+		// are both GET /items/:id.
+		path := status.NormalizeEndpointPath(entry.Path)
+		key := endpointKey{entry.Method, path}
 		endpoint := groups[key]
 		if endpoint == nil {
-			endpoint = &Endpoint{Method: entry.Method, Path: entry.Path}
+			endpoint = &Endpoint{Method: entry.Method, Path: path}
 			groups[key] = endpoint
 		}
 		endpoint.Requests++
