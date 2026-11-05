@@ -244,7 +244,14 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 
 `status` joins captured requests to services by target port. Each port is shown once, even when several PIDs share it, so no request is counted twice. Endpoints are ordered by errors, average latency and request count, then by path and method, so `status` output and `baseline.json` are identical between runs over the same session.
 
-`init` detects the project type from marker files (`next.config.*`, `vite.config.{js,ts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It prefers the conventional port for that type (Next.js 3000, Vite 5173, Python 8000, Go/Java 8080). It then falls back to the only HTTP service, then to the first of 3000, 5173, 8000, 8080, 8081 and 9000.
+`init` detects the project type from marker files (`next.config.{js,mjs,ts,cjs}`, `vite.config.{js,ts,mjs,mts,cjs,cts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It searches upward from the current directory for the nearest directory with a marker. The search stops at the repository root (the directory containing `.git`, which may be a file in worktrees and submodules) or at the filesystem root. That directory is the project root, and `init` writes `.devpulse/config.json` there, so running it from `src/` configures the whole project. With no marker, `init` reports `Unknown project` and writes to the current directory.
+
+`init` then picks the target from the discovered HTTP services. The first rule that matches wins:
+
+1. The conventional port for the project type: Next.js 3000, Vite 5173, Python 8000, Go/Java 8080.
+2. The only HTTP service.
+3. The first of 3000, 5173, 8000, 8080, 8081 and 9000 that is listening.
+4. A service with an identified framework before a generic `HTTP service` (often an OS service such as HTTP.sys on Windows or AirTunes on macOS), then the lowest port.
 
 ---
 

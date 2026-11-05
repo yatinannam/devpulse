@@ -16,6 +16,10 @@ import (
 // KindDevPulseProxy labels a listener that is DevPulse's own traffic proxy.
 const KindDevPulseProxy = "DevPulse proxy"
 
+// KindHTTPService labels a listener that answers HTTP but matched no
+// fingerprint.
+const KindHTTPService = "HTTP service"
+
 type Service struct {
 	Port    int
 	Process string
@@ -102,7 +106,7 @@ func probe(port int, timeout time.Duration) (bool, string, string, string) {
 
 	server := resp.Header.Get("Server")
 	kind := identify(resp.Header, "")
-	if kind == "HTTP service" {
+	if kind == KindHTTPService {
 		_ = resp.Body.Close()
 		getReq, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
 		if err == nil {
@@ -155,5 +159,5 @@ func identify(h http.Header, body string) string {
 	if strings.Contains(server, "nginx") {
 		return "Nginx"
 	}
-	return "HTTP service"
+	return KindHTTPService
 }
