@@ -10,7 +10,11 @@ import (
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/ports"
+	"github.com/yatinannam/devpulse/internal/traffic"
 )
+
+// KindDevPulseProxy labels a listener that is DevPulse's own traffic proxy.
+const KindDevPulseProxy = "DevPulse proxy"
 
 type Service struct {
 	Port    int
@@ -66,6 +70,7 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 	if err != nil {
 		return false, "", ""
 	}
+	req.Header.Set(traffic.ProbeHeader, "1")
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, "", ""
@@ -78,6 +83,7 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 		_ = resp.Body.Close()
 		getReq, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
 		if err == nil {
+			getReq.Header.Set(traffic.ProbeHeader, "1")
 			getResp, err := client.Do(getReq)
 			if err == nil {
 				body, _ := io.ReadAll(io.LimitReader(getResp.Body, 8*1024))
@@ -90,6 +96,9 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 }
 
 func identify(h http.Header, body string) string {
+	if h.Get(traffic.ProxyHeader) != "" {
+		return KindDevPulseProxy
+	}
 	server := strings.ToLower(h.Get("Server"))
 	x := strings.ToLower(body)
 	if strings.Contains(server, "uvicorn") || strings.Contains(x, "fastapi") {

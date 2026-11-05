@@ -307,7 +307,7 @@ On Windows, both the IPv4 and IPv6 TCP tables are read, and listeners are recogn
 
 On macOS, an empty listener table is reported as no ports rather than an `lsof` error (lsof exits 1 when nothing matches). `devpulse ports --watch` keeps running when a single poll fails: the error is printed and the next poll retries. Changes within one poll are printed in port order.
 
-HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing.
+HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing. Probes carry an `X-DevPulse-Probe` header. A running DevPulse proxy answers them itself, so `status`, `watch`, `init`, `baseline`, and `diff` never forward their probes to your app or record them as captured traffic. The proxy is listed as `DevPulse proxy` and is never chosen as a target by `devpulse init`.
 
 ---
 
