@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,18 +111,138 @@ func TestBuildJSONEmitsEmptyArraysNotNull(t *testing.T) {
 
 func TestRenderEscapesMarkdownTableCells(t *testing.T) {
 	session := sampleSession()
-	session.Requests[0].Path = "/search?q=a|b"
-	session.Requests[0].Method = "GET\nInjected"
+	// Requests[1] is the slowest request, so Top: 1 puts it in the Slowest
+	// table as well as in Top Endpoints.
+	session.Requests[1].Path = "/a|b"
+	session.Requests[1].Method = "GET\nInjected"
 	got := Build(session, Options{Top: 1, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
+	if len(got.Slowest) != 1 || got.Slowest[0].Path != "/a|b" {
+		t.Fatalf("fixture no longer puts the escaped request in the Slowest table: %+v", got.Slowest)
+	}
 	var out bytes.Buffer
 	if err := Render(&out, got); err != nil { t.Fatal(err) }
 	text := out.String()
-	if !bytes.Contains(out.Bytes(), []byte("/search?q=a\\|b")) {
-		t.Fatalf("pipe was not escaped: %s", text)
-	}
-	if bytes.Contains(out.Bytes(), []byte("GET\nInjected")) {
+	if strings.Contains(text, "GET\nInjected") {
 		t.Fatalf("newline escaped into table output: %s", text)
 	}
+	for _, name := range []string{"Top Endpoints", "Slowest Requests"} {
+		section := markdownSection(t, text, name)
+		if !strings.Contains(section, `| GET Injected | /a\|b |`) {
+			t.Errorf("%s table does not escape the method and path:\n%s", name, section)
+		}
+	}
+}
+
+func TestRenderTitleAndSessionPathCannotInjectMarkdown(t *testing.T) {
+	got := Build(sampleSession(), Options{
+		Title:       "Smoke\n## Fake Title\r\n- [x](javascript:alert(1)) *bold* `code` #",
+		SessionPath: "session.json\n## Fake Section\n",
+		Top:         1,
+		GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC),
+	})
+	var out bytes.Buffer
+	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	text := out.String()
+	var headings []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "#") {
+			headings = append(headings, line)
+		}
+	}
+	want := []string{
+		"# Smoke \\#\\# Fake Title - \\[x\\](javascript:alert(1)) \\*bold\\* \\`code\\` \\#",
+		"## Summary", "## Top Endpoints", "## HTTP Status Codes", "## Slowest Requests", "## Diagnostic Findings",
+	}
+	if strings.Join(headings, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("headings = %q, want %q", headings, want)
+	}
+	if !strings.Contains(text, "- Session: session.json \\#\\# Fake Section \n") {
+		t.Fatalf("session path was not flattened and escaped:\n%s", text)
+	}
+}
+
+func TestRenderSectionsFollowDocumentedOrder(t *testing.T) {
+	got := Build(sampleSession(), Options{Top: 3, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
+	var out bytes.Buffer
+	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	text := out.String()
+	last := -1
+	for _, heading := range []string{"## Summary", "## Top Endpoints", "## HTTP Status Codes", "## Slowest Requests", "## Diagnostic Findings"} {
+		i := strings.Index(text, "\n"+heading+"\n")
+		if i < 0 {
+			t.Fatalf("report missing %q:\n%s", heading, text)
+		}
+		if i < last {
+			t.Fatalf("%q is out of the documented order:\n%s", heading, text)
+		}
+		last = i
+	}
+}
+
+func TestRenderTopZeroSaysSlowestDetailsWereOmitted(t *testing.T) {
+	got := Build(sampleSession(), Options{Top: 0, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
+	var out bytes.Buffer
+	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	section := markdownSection(t, out.String(), "Slowest Requests")
+	if strings.Contains(section, "No requests") {
+		t.Fatalf("Top 0 on a non-empty session claims there are no requests:\n%s", section)
+	}
+	if !strings.Contains(section, "omitted with `--top 0`") {
+		t.Fatalf("Top 0 does not explain the omission:\n%s", section)
+	}
+}
+
+func TestRenderEmptySessionSaysNoRequests(t *testing.T) {
+	got := Build(traffic.Session{}, Options{Top: 0})
+	var out bytes.Buffer
+	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	section := markdownSection(t, out.String(), "Slowest Requests")
+	if !strings.Contains(section, "No requests") || strings.Contains(section, "omitted") {
+		t.Fatalf("empty session should report no requests:\n%s", section)
+	}
+}
+
+func TestReportJSONUsesSnakeCaseFieldNames(t *testing.T) {
+	data, err := json.Marshal(Build(sampleSession(), Options{Top: 1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Slowest []map[string]json.RawMessage `json:"slowest_requests"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Slowest) != 1 {
+		t.Fatalf("got %d slowest requests, want 1: %s", len(decoded.Slowest), data)
+	}
+	request := decoded.Slowest[0]
+	for _, key := range []string{"time", "method", "path", "status", "latency", "bytes", "target_host", "target_port"} {
+		if _, ok := request[key]; !ok {
+			t.Errorf("slowest request missing %q: %s", key, data)
+		}
+	}
+	if len(request) != 8 {
+		t.Errorf("slowest request has unexpected fields: %s", data)
+	}
+	if string(request["target_host"]) != `"localhost"` || string(request["target_port"]) != "8080" {
+		t.Errorf("target fields not populated: %s", data)
+	}
+}
+
+// markdownSection returns the body of the "## name" section of a report.
+func markdownSection(t *testing.T, text, name string) string {
+	t.Helper()
+	heading := "\n## " + name + "\n"
+	start := strings.Index(text, heading)
+	if start < 0 {
+		t.Fatalf("report has no %q section:\n%s", name, text)
+	}
+	body := text[start+len(heading):]
+	if end := strings.Index(body, "\n## "); end >= 0 {
+		body = body[:end]
+	}
+	return body
 }
 
 func TestBuildDefaultsTitleAndClampsNegativeTop(t *testing.T) {

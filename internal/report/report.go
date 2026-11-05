@@ -30,6 +30,20 @@ type Endpoint struct {
 	Average time.Duration `json:"average_latency"`
 }
 
+// SlowRequest is one entry of slowest_requests. It mirrors traffic.Request
+// with the report's snake_case field names, so the report JSON stays stable
+// even if the session format changes.
+type SlowRequest struct {
+	Time       time.Time     `json:"time"`
+	Method     string        `json:"method"`
+	Path       string        `json:"path"`
+	Status     int           `json:"status"`
+	Latency    time.Duration `json:"latency"`
+	Bytes      int64         `json:"bytes"`
+	TargetHost string        `json:"target_host"`
+	TargetPort int           `json:"target_port"`
+}
+
 type Report struct {
 	Title string `json:"title"`
 	SessionPath string `json:"session_path"`
@@ -38,7 +52,7 @@ type Report struct {
 	Summary summary.Report `json:"summary"`
 	StatusCodes []StatusCount `json:"status_codes"`
 	Endpoints []Endpoint `json:"endpoints"`
-	Slowest []traffic.Request `json:"slowest_requests"`
+	Slowest []SlowRequest `json:"slowest_requests"`
 	Findings []doctor.Finding `json:"findings"`
 }
 
@@ -50,8 +64,20 @@ func Build(session traffic.Session, opts Options) Report {
 	if generated.IsZero() { generated = time.Now() }
 	return Report{
 		Title: title, SessionPath: opts.SessionPath, SessionCreatedAt: session.CreatedAt,
-		GeneratedAt: generated, Summary: summary.Build(session.Requests), Slowest: summary.Slowest(session.Requests, max(0, opts.Top)), Findings: doctor.Analyze(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
+		GeneratedAt: generated, Summary: summary.Build(session.Requests), Slowest: buildSlowest(session.Requests, max(0, opts.Top)), Findings: doctor.Analyze(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
 	}
+}
+
+func buildSlowest(entries []traffic.Request, top int) []SlowRequest {
+	slowest := summary.Slowest(entries, top)
+	out := make([]SlowRequest, 0, len(slowest))
+	for _, r := range slowest {
+		out = append(out, SlowRequest{
+			Time: r.Time, Method: r.Method, Path: r.Path, Status: r.Status, Latency: r.Latency,
+			Bytes: r.Bytes, TargetHost: r.TargetHost, TargetPort: r.TargetPort,
+		})
+	}
+	return out
 }
 
 type endpointKey struct { method, path string }
