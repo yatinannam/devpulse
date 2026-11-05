@@ -33,3 +33,23 @@ func TestBuildRejectsInvalidWidth(t *testing.T) {
         t.Fatalf("got %#v for zero width, want nil", got)
     }
 }
+
+func TestBuildMergesEqualInstantsFromDifferentLocations(t *testing.T) {
+	// Sessions decoded from JSON give each non-whole-hour offset its own
+	// *time.Location, so identical instants must still share one bucket.
+	ist1 := time.FixedZone("", 5*3600+30*60)
+	ist2 := time.FixedZone("", 5*3600+30*60)
+	base := time.Date(2026, 9, 14, 10, 0, 0, 0, time.UTC)
+	entries := []traffic.Request{
+		{Time: base.Add(5 * time.Second).In(ist1), Status: 200, Latency: 10 * time.Millisecond},
+		{Time: base.Add(15 * time.Second).In(ist2), Status: 200, Latency: 30 * time.Millisecond},
+		{Time: base.Add(25 * time.Second), Status: 200, Latency: 20 * time.Millisecond},
+	}
+	got := Build(entries, time.Minute)
+	if len(got) != 1 {
+		t.Fatalf("got %d buckets, want 1: %#v", len(got), got)
+	}
+	if got[0].Requests != 3 {
+		t.Fatalf("bucket has %d requests, want 3", got[0].Requests)
+	}
+}

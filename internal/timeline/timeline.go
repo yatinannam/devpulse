@@ -19,13 +19,17 @@ func Build(entries []traffic.Request, width time.Duration) []Bucket {
 	if len(entries) == 0 || width <= 0 {
 		return nil
 	}
-	buckets := map[time.Time]*Bucket{}
+	// Key by Unix nanoseconds, not time.Time: map equality on time.Time also
+	// compares the *Location pointer, so the same instant decoded with two
+	// distinct fixed zones (e.g. +05:30) would otherwise split into two buckets.
+	buckets := map[int64]*Bucket{}
 	for _, entry := range entries {
 		start := entry.Time.Truncate(width)
-		b := buckets[start]
+		key := start.UnixNano()
+		b := buckets[key]
 		if b == nil {
 			b = &Bucket{Start: start}
-			buckets[start] = b
+			buckets[key] = b
 		}
 		b.Requests++
 		if entry.Status >= 400 {
