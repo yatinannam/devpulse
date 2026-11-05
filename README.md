@@ -390,6 +390,8 @@ devpulse config --listen 127.0.0.1:9090
 devpulse config --watch-interval 5s
 ```
 
+`--watch-interval` and `devpulse watch --interval` take a positive duration such as `500ms` or `5s`. Zero, negative, and malformed values are rejected with exit status 2; a bad value already saved in a configuration file is reported and replaced by the 2s default.
+
 The proxy listens on the loopback interface (`127.0.0.1:9090`) by default, so the proxied app and its recorder are not reachable from the local network. To expose the proxy deliberately, pass `--listen 0.0.0.0:9090`. Configuration files saved by earlier versions may still contain `:9090` (all interfaces); run `devpulse config --listen 127.0.0.1:9090` to update them.
 
 Environment overrides:

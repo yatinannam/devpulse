@@ -271,6 +271,10 @@ func configCommand(args []string) {
 		changed = true
 	}
 	if *setInterval != "" {
+		if _, err := parseWatchInterval(*setInterval); err != nil {
+			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+			os.Exit(2)
+		}
 		c.WatchInterval = *setInterval
 		changed = true
 	}
@@ -400,14 +404,20 @@ func statusCommand(args []string) {
 func watchCommand(args []string) {
 	c := loadConfig()
 	defaultInterval := 2 * time.Second
-	if d, err := time.ParseDuration(c.WatchInterval); err == nil {
+	if d, err := parseWatchInterval(c.WatchInterval); err == nil {
 		defaultInterval = d
+	} else if c.WatchInterval != "" {
+		fmt.Fprintf(os.Stderr, "devpulse: config watch_interval: %v; using %s\n", err, defaultInterval)
 	}
 
 	fs := flag.NewFlagSet("watch", flag.ExitOnError)
 	interval := fs.Duration("interval", defaultInterval, "refresh interval")
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
 	mustParseArgs(fs, args)
+	if *interval <= 0 {
+		fmt.Fprintf(os.Stderr, "devpulse watch: --interval must be positive, got %s\n", *interval)
+		os.Exit(2)
+	}
 
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()

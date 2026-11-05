@@ -106,3 +106,14 @@ func TestParseArgsRejectsPositionalArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestParseWatchInterval(t *testing.T) {
+	for _, bad := range []string{"0s", "-1s", "abc", ""} {
+		if _, err := parseWatchInterval(bad); err == nil {
+			t.Errorf("parseWatchInterval(%q) should fail", bad)
+		}
+	}
+	if got, err := parseWatchInterval("5s"); err != nil || got.Seconds() != 5 {
+		t.Errorf("parseWatchInterval(5s) = %v, %v", got, err)
+	}
+}

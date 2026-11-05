@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"time"
 )
 
 // parseArgs parses command flags and rejects positional arguments. The flag
@@ -49,4 +50,17 @@ func ensureDistinctOutput(sourcePath, outputPath string) error {
 		return fmt.Errorf("output path must differ from the source session")
 	}
 	return nil
+}
+
+// parseWatchInterval accepts only positive durations; time.NewTicker panics
+// on zero or negative intervals.
+func parseWatchInterval(value string) (time.Duration, error) {
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid watch interval %q: use a duration such as 2s or 500ms", value)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("watch interval must be positive, got %s", value)
+	}
+	return d, nil
 }
