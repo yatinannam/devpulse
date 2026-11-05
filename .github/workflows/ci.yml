@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Tests only need to read the repository; never inherit a write-all token.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
