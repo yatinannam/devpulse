@@ -12,7 +12,7 @@ import (
 // List uses macOS lsof to enumerate TCP listeners. Process metadata may be
 // unavailable when the caller lacks permission to inspect a process.
 func List() ([]Entry, error) {
-	out, err := exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn").Output()
+	out, err := tolerateNoMatches(exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn").Output())
 	if err != nil {
 		return nil, fmt.Errorf("lsof: %w", err)
 	}

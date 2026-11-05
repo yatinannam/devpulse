@@ -305,6 +305,8 @@ The implementation abstracts those platform details behind the same internal ser
 
 On Windows, both the IPv4 and IPv6 TCP tables are read, and listeners are recognised by their wildcard foreign address rather than the localized `LISTENING` state text, so non-English Windows installations work too. A port bound on both IPv4 and IPv6 by the same process is listed once.
 
+On macOS, an empty listener table is reported as no ports rather than an `lsof` error (lsof exits 1 when nothing matches). `devpulse ports --watch` keeps running when a single poll fails: the error is printed and the next poll retries. Changes within one poll are printed in port order.
+
 HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing.
 
 ---

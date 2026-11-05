@@ -296,7 +296,8 @@ func portsCommand(args []string) {
 	ports.Print(entries)
 	if *watch {
 		fmt.Println("\nWatching for port changes... (Ctrl+C to stop)")
-		if err := ports.Watch(time.Second, ports.PrintChange); err != nil {
+		onError := func(err error) { fmt.Fprintf(os.Stderr, "devpulse: %v (retrying)\n", err) }
+		if err := ports.Watch(time.Second, ports.PrintChange, onError); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
