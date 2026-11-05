@@ -303,7 +303,7 @@ Findings are sorted by severity (error, warning, info), then subject, with port 
 
 ### Timeline
 
-Requests are grouped into buckets of `--bucket` width, aligned with `time.Truncate` (absolute time, UTC-aligned) and keyed by instant, so equal instants always share a bucket whatever their zone offset.
+Requests are grouped into buckets of `--bucket` width, aligned to the local wall clock: each request's instant is shifted by its local UTC offset, truncated with `time.Truncate`, and shifted back, so `--bucket 1h` starts on the local hour even at a +05:30 offset. Buckets are keyed by instant, so equal instants always share a bucket whatever their zone offset. Requests without a timestamp (zero time) are skipped.
 
 ---
 

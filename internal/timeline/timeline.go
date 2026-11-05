@@ -25,7 +25,12 @@ func Build(entries []traffic.Request, width time.Duration) []Bucket {
 	// distinct fixed zones (e.g. +05:30) would otherwise split into two buckets.
 	buckets := map[int64]*Bucket{}
 	for _, entry := range entries {
-		start := entry.Time.Truncate(width)
+		// A zero time means the request was never timestamped; bucketing it
+		// would add a year-0001 bucket ahead of the real traffic.
+		if entry.Time.IsZero() {
+			continue
+		}
+		start := bucketStart(entry.Time, width)
 		key := start.UnixNano()
 		b := buckets[key]
 		if b == nil {
@@ -45,4 +50,14 @@ func Build(entries []traffic.Request, width time.Duration) []Bucket {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
 	return out
+}
+
+// bucketStart aligns t to the local wall clock. time.Truncate works on
+// absolute time, which aligns to UTC, so for a +05:30 user hourly buckets
+// would start at :30 local. Shifting by the local offset of t's instant
+// before truncating, and back afterwards, starts them on the local hour.
+func bucketStart(t time.Time, width time.Duration) time.Time {
+	_, offset := t.In(time.Local).Zone()
+	shift := time.Duration(offset) * time.Second
+	return t.Add(shift).Truncate(width).Add(-shift)
 }
