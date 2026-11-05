@@ -1,10 +1,10 @@
 package discovery
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,26 +38,49 @@ func Discover(timeout time.Duration) ([]Service, error) {
 		wg.Add(1)
 		go func(idx int, entry ports.Entry) {
 			defer wg.Done()
-			s := Service{Port: entry.Port, Process: entry.Process, PID: entry.PID, State: entry.State}
-			s.HTTP, s.Kind, s.Server = probe(entry.Port, timeout)
-			if s.HTTP {
-				s.URL = fmt.Sprintf("http://127.0.0.1:%d", entry.Port)
-			}
-			out[idx] = s
+			out[idx] = probeEntry(entry, timeout)
 		}(i, e)
 	}
 	wg.Wait()
 	return out, nil
 }
 
-func probe(port int, timeout time.Duration) (bool, string, string) {
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-
-	conn, err := net.DialTimeout("tcp", addr, timeout)
-	if err != nil {
-		return false, "", ""
+// probeEntry probes one listener and describes it as a Service.
+func probeEntry(entry ports.Entry, timeout time.Duration) Service {
+	s := Service{Port: entry.Port, Process: entry.Process, PID: entry.PID, State: entry.State}
+	var addr string
+	s.HTTP, s.Kind, s.Server, addr = probe(entry.Port, timeout)
+	if s.HTTP {
+		s.URL = "http://" + addr
 	}
-	_ = conn.Close()
+	return s
+}
+
+// loopbackHosts are dialled in order. A server bound only to ::1 (Vite binds
+// "localhost" there on Node 17 and later) refuses 127.0.0.1.
+var loopbackHosts = []string{"127.0.0.1", "::1"}
+
+// dialLoopback returns the first loopback host:port that accepts a TCP
+// connection, for example "127.0.0.1:3000" or "[::1]:5173".
+func dialLoopback(port int, timeout time.Duration) (string, bool) {
+	for _, host := range loopbackHosts {
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err == nil {
+			_ = conn.Close()
+			return addr, true
+		}
+	}
+	return "", false
+}
+
+// probe reports whether the listener on port speaks HTTP, its fingerprint,
+// its Server header and the loopback host:port that answered.
+func probe(port int, timeout time.Duration) (bool, string, string, string) {
+	addr, ok := dialLoopback(port, timeout)
+	if !ok {
+		return false, "", "", ""
+	}
 
 	client := http.Client{
 		Timeout: timeout,
@@ -68,12 +91,12 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 	// Start with HEAD to avoid downloading application pages. If headers do not identify the service, retry with a bounded GET.
 	req, err := http.NewRequest(http.MethodHead, "http://"+addr+"/", nil)
 	if err != nil {
-		return false, "", ""
+		return false, "", "", ""
 	}
 	req.Header.Set(traffic.ProbeHeader, "1")
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, "", ""
+		return false, "", "", ""
 	}
 	defer resp.Body.Close()
 
@@ -92,7 +115,7 @@ func probe(port int, timeout time.Duration) (bool, string, string) {
 			}
 		}
 	}
-	return true, kind, server
+	return true, kind, server, addr
 }
 
 func identify(h http.Header, body string) string {

@@ -222,9 +222,9 @@ The netstat, tasklist, ss and lsof parsers are pure functions in untagged files,
 
 ### HTTP probing and fingerprinting
 
-Each listener is probed concurrently against `127.0.0.1:<port>`:
+Each listener is probed concurrently on the loopback interface:
 
-1. TCP dial with a 250 to 300 ms timeout. Failure means a non-HTTP listener.
+1. TCP dial to `127.0.0.1:<port>` with a 250 to 300 ms timeout. If that fails, dial `[::1]:<port>`, which catches servers bound only to IPv6 loopback (Vite binds `localhost` there on Node 17+). If both fail, the listener is non-HTTP. Later steps and the service URL (`http://127.0.0.1:3000` or `http://[::1]:5173`) use the address that answered.
 2. `HEAD /`, with redirects not followed.
 3. If the headers do not identify the server, `GET /` with the body capped at 8 KiB.
 
