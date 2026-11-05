@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -53,6 +54,9 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target: %w", err)
+	}
+	if err := checkTarget(target, u); err != nil {
+		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	original := proxy.Director
@@ -103,6 +107,27 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		http.Error(w, "devpulse proxy error", 502)
 	}
 	return proxy, nil
+}
+
+// checkTarget rejects targets the proxy cannot forward to. url.Parse accepts
+// "localhost:3000" as scheme "localhost", which would otherwise start the
+// proxy and fail every request with "unsupported protocol scheme".
+func checkTarget(target string, u *url.URL) error {
+	const example = "http://localhost:3000"
+	webScheme := u.Scheme == "http" || u.Scheme == "https"
+	switch {
+	case !webScheme && !strings.Contains(target, "://"):
+		suggestion := example
+		if target != "" {
+			suggestion = "http://" + target
+		}
+		return fmt.Errorf("invalid target %q: include the scheme, for example %s", target, suggestion)
+	case !webScheme:
+		return fmt.Errorf("invalid target %q: the scheme must be http or https", target)
+	case u.Hostname() == "":
+		return fmt.Errorf("invalid target %q: missing host, for example %s", target, example)
+	}
+	return nil
 }
 
 // StatusClientClosedRequest is recorded when the client cancels a request

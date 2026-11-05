@@ -135,6 +135,26 @@ func TestProxyRecordsBodylessResponsesExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestNewProxyRejectsUnusableTargets(t *testing.T) {
+	for _, tc := range []struct{ target, want string }{
+		{target: "localhost:3000", want: `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`},
+		{target: "ftp://x", want: `invalid target "ftp://x": the scheme must be http or https`},
+		{target: "http://", want: `invalid target "http://": missing host`},
+	} {
+		_, err := NewProxy(tc.target, NewRecorder(nil))
+		if err == nil {
+			t.Errorf("NewProxy(%q) succeeded, want an error", tc.target)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("NewProxy(%q) error = %q, want it to contain %q", tc.target, err, tc.want)
+		}
+	}
+	if _, err := NewProxy("http://localhost:3000", NewRecorder(nil)); err != nil {
+		t.Fatalf("NewProxy rejected a valid target: %v", err)
+	}
+}
+
 func TestProxyRecordsTheClientRequestURI(t *testing.T) {
 	upstreamURI := make(chan string, 1)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

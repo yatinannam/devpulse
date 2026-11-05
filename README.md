@@ -200,6 +200,8 @@ devpulse report --from ./artifacts/session.json --out ./artifacts/traffic.md
 devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
+`--target` must be an `http://` or `https://` URL with a host. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+
 `report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. See [docs/markdown-reports.md](docs/markdown-reports.md).
 
 ---
