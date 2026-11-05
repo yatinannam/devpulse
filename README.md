@@ -209,12 +209,14 @@ devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 
 | OS | Command | Parsing notes |
 | --- | --- | --- |
-| Linux | `ss -ltnp` | Process name and PID from the `users:(("name",pid=N,...))` column |
-| macOS | `lsof -nP -iTCP -sTCP:LISTEN -F pcn` | Field-mode output. Exit status 1 (no matches) is treated as an empty table |
+| Linux | `ss -ltnp` | Process name and PID from the `users:(("name",pid=N,...))` column. IPv4 and IPv6 rows for the same port and PID are merged |
+| macOS | `lsof -nP -iTCP -sTCP:LISTEN -F pcn` | Field-mode output. Exit status 1 (no matches) is treated as an empty table. TCP4 and TCP6 descriptors for the same port and PID are merged |
 | Windows | `netstat -ano`, `tasklist /FO CSV /NH` | Reads both the TCP and TCPv6 tables. Listeners are matched by their wildcard foreign address (`0.0.0.0:0` / `[::]:0`), not the localized `LISTENING` text. IPv4 and IPv6 rows for the same port and PID are merged |
 | Other | | `ports_stub.go` returns an unsupported-platform error |
 
-The netstat, tasklist, ss and lsof parsers are pure functions with fixture tests that run on every CI platform.
+On every OS, a dual-stack server (for example `0.0.0.0:22` plus `[::]:22`) is listed and probed once. Two different processes on the same port stay separate.
+
+The netstat, tasklist, ss and lsof parsers are pure functions in untagged files, with fixture tests that run on every CI platform.
 
 `ports --watch` diffs consecutive snapshots keyed by port. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
 
