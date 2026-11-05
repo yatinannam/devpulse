@@ -2,25 +2,81 @@ package ports
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"sort"
+	"strconv"
+	"time"
+
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
+// Print writes the listener table to stdout, sized to the terminal.
 func Print(entries []Entry) {
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Port < entries[j].Port })
+	Render(os.Stdout, entries, ui.TermWidth())
+}
 
-	fmt.Println("DEVPULSE")
-	fmt.Println("────────────────────────────────────────")
-	fmt.Printf("%-8s %-20s %-10s %s\n", "PORT", "PROCESS", "PID", "STATUS")
+// Render writes a Port, Process, PID table sorted by port, then the
+// listener count. It sorts a copy, so the caller's slice keeps its order.
+// Every entry is a listener, so no state column is printed.
+func Render(w io.Writer, entries []Entry, width int) {
+	sorted := append([]Entry(nil), entries...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Port < sorted[j].Port })
 
-	for _, e := range entries {
-		process := e.Process
-		if process == "" {
-			process = "-"
+	ui.Title(w, width, "ports", nil)
+	if len(sorted) == 0 {
+		fmt.Fprintln(w, "No TCP listeners found.")
+		return
+	}
+	table := ui.NewTable(
+		ui.Column{Header: "Port", Align: ui.AlignRight},
+		ui.Column{Header: "Process", Flex: true},
+		ui.Column{Header: "PID", Align: ui.AlignRight},
+	)
+	for _, e := range sorted {
+		process := ui.Plain(e.Process)
+		if e.Process == "" {
+			process = ui.Styled("-", ui.Muted)
 		}
-		fmt.Printf("%-8d %-20s %-10s ● %s\n", e.Port, process, e.PID, e.State)
+		table.Row(ui.Plain(strconv.Itoa(e.Port)), process, ui.Plain(e.PID))
 	}
+	table.Render(w, width)
+	fmt.Fprintln(w)
+	ui.Writeln(w, ui.Styled(ui.Count(len(sorted), "listener", "listeners"), ui.Muted))
+}
 
-	if len(entries) == 0 {
-		fmt.Println("No listening TCP ports found.")
+// printChange is the stdout form of RenderChange that PrintChange uses.
+func printChange(added, removed []Entry) {
+	RenderChange(os.Stdout, time.Now(), ui.TermWidth(), added, removed)
+}
+
+// RenderChange writes one line per opened port (a green +) and closed port
+// (a red -), such as "10:01:02  + :5173  node (pid 9912) opened".
+func RenderChange(w io.Writer, now time.Time, width int, added, removed []Entry) {
+	stamp := now.Format("15:04:05")
+	for _, e := range added {
+		writeChange(w, width, stamp, ui.Styled("+", ui.OK), e, "opened")
 	}
+	for _, e := range removed {
+		writeChange(w, width, stamp, ui.Styled("-", ui.Error), e, "closed")
+	}
+}
+
+func writeChange(w io.Writer, width int, stamp string, sign ui.Line, e Entry, verb string) {
+	head := ui.Join(ui.Styled(stamp, ui.Muted), ui.Plain("  "), sign, ui.Plain(fmt.Sprintf(" :%-5d ", e.Port)))
+	tail := ui.Plain(" " + verb)
+	owner := ""
+	switch {
+	case e.Process != "" && e.PID != "":
+		owner = fmt.Sprintf("%s (pid %s)", e.Process, e.PID)
+	case e.Process != "":
+		owner = e.Process
+	case e.PID != "":
+		owner = "pid " + e.PID
+	}
+	if owner == "" {
+		ui.Writeln(w, ui.Join(head.TrimRight(), tail))
+		return
+	}
+	ui.Writeln(w, ui.Join(head, ui.Plain(owner).Truncate(width-head.Width()-tail.Width()), tail))
 }
