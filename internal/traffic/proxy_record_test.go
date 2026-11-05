@@ -1,9 +1,16 @@
 package traffic
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -125,5 +132,91 @@ func TestProxyRecordsBodylessResponsesExactlyOnce(t *testing.T) {
 				t.Fatalf("recorded %d bytes for a response without a body, want 0", entry.Bytes)
 			}
 		})
+	}
+}
+
+func TestProxyRecordsClientCancellationAs499(t *testing.T) {
+	arrived := make(chan struct{}, 1)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case arrived <- struct{}{}:
+		default:
+		}
+		<-r.Context().Done()
+	}))
+	defer backend.Close()
+	recorder, proxy := startCapture(t, backend.URL)
+
+	var logs bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(previous)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxy.URL+"/slow", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		done <- err
+	}()
+	select {
+	case <-arrived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never reached the backend")
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("client error = %v, want context.Canceled", err)
+	}
+	proxy.Close()
+
+	if got := onlyEntry(t, recorder).Status; got != 499 {
+		t.Fatalf("recorded status %d for a cancelled request, want 499", got)
+	}
+	if strings.Contains(logs.String(), "proxy error") {
+		t.Fatalf("client cancellation was logged as a proxy error: %q", logs.String())
+	}
+}
+
+func TestProxyRecordsFailedUpgradeOnlyOnce(t *testing.T) {
+	// A raw backend that answers a plain GET with an upgrade the client never
+	// asked for. ReverseProxy passes the 101 to ModifyResponse and then fails
+	// the switch through ErrorHandler.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	release := make(chan struct{})
+	defer close(release)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+			return
+		}
+		_, _ = io.WriteString(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: unrequested\r\nConnection: Upgrade\r\n\r\n")
+		<-release
+	}()
+	recorder, proxy := startCapture(t, "http://"+listener.Addr().String())
+
+	resp, _ := fetch(t, http.MethodGet, proxy.URL+"/socket")
+	proxy.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("client got status %d, want 502 from the failed switch", resp.StatusCode)
+	}
+	if got := onlyEntry(t, recorder).Status; got != http.StatusSwitchingProtocols {
+		t.Fatalf("recorded status %d, want the 101 seen by ModifyResponse", got)
 	}
 }

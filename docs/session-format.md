@@ -32,7 +32,7 @@ Each proxied request is recorded exactly once, when its response body has finish
 | `time` | When the proxy received the request. |
 | `method` | The client's request method. |
 | `path` | The upstream request URI, including the query string. |
-| `status` | The upstream status code. `502` when the upstream could not be reached. |
+| `status` | The upstream status code. `502` when the upstream could not be reached or the proxy failed the request. `499` (client closed request) when the client cancelled before the upstream answered; these are not logged as proxy errors. A client that disconnects while the body is streaming keeps the upstream status, with `bytes` counting what was streamed. |
 | `latency` | Nanoseconds from when the proxy received the request until the response body finished streaming (it reached EOF or was closed). For a `101 Switching Protocols` upgrade it stops at the upgrade response; for a proxy error it stops when the error occurred. |
 | `bytes` | Response body bytes actually streamed, not the upstream `Content-Length`. It is `0` for responses without a body (`HEAD`, `204`, `304`), for upgrades and for proxy errors, and can be smaller than `Content-Length` when the transfer was cut short. |
 | `targetHost`, `targetPort` | The upstream host and port parsed from `--target`. The port defaults to `80` for `http` and `443` for `https`. |

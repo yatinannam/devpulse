@@ -170,7 +170,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
                  │  httputil.ReverseProxy
                  │    ModifyResponse ─► wrap the body in a byte counter
                  │    body EOF/close ─► record status, latency, bytes (once)
-                 │    ErrorHandler   ─► record synthetic 502
+                 │    ErrorHandler   ─► record 502, or 499 if the client cancelled (once)
                  ▼
             Recorder (mutex-guarded, keeps the newest 1000 requests)
                  │
@@ -186,7 +186,7 @@ Each captured request becomes one record:
 | `time` | RFC 3339 timestamp | Proxy receive time |
 | `method` | string | Request method |
 | `path` | string | Upstream request URI, including the query string |
-| `status` | int | Upstream status, or `502` if the upstream could not be reached |
+| `status` | int | Upstream status; `502` if the upstream could not be reached, `499` if the client cancelled first |
 | `latency` | int (ns) | Receive time until the response body finished streaming |
 | `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
 | `targetHost`, `targetPort` | string, int | Parsed from `--target` |

@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -87,14 +88,26 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		return nil
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		status := http.StatusBadGateway
+		if errors.Is(err, context.Canceled) {
+			// The client went away; neither the proxy nor the upstream failed.
+			status = StatusClientClosedRequest
+		}
 		if state, ok := req.Context().Value(stateKey{}).(*requestState); ok {
-			record(req, 502, 0, state.start)
+			state.once.Do(func() { record(req, status, 0, state.start) })
+		}
+		if status == StatusClientClosedRequest {
+			return
 		}
 		log.Printf("proxy error: %s %v", req.URL.RequestURI(), err)
 		http.Error(w, "devpulse proxy error", 502)
 	}
 	return proxy, nil
 }
+
+// StatusClientClosedRequest is recorded when the client cancels a request
+// before the upstream answered (nginx's non-standard 499).
+const StatusClientClosedRequest = 499
 
 type stateKey struct{}
 
