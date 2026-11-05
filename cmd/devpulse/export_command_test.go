@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -238,4 +239,63 @@ func TestParseExportTime(t *testing.T) {
 			t.Fatal("expected invalid timestamp to fail")
 		}
 	})
+}
+
+func TestBuildExportOptionsValidatesWithoutLoadingSession(t *testing.T) {
+	got, err := buildExportOptions("post", 500, "/api/", "2026-10-28T10:00:00Z", "2026-10-28T11:00:00Z", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := exportOptions{
+		Method: "post", Status: 500, PathPrefix: "/api/",
+		Since: time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC),
+		Until: time.Date(2026, 10, 28, 11, 0, 0, 0, time.UTC),
+		Limit: 3,
+	}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+
+	cases := []struct {
+		name         string
+		status       int
+		since, until string
+		limit        int
+		wantErr      string
+	}{
+		{name: "negative limit", limit: -1, wantErr: "--limit"},
+		{name: "reversed window", since: "2026-10-28T11:00:00Z", until: "2026-10-28T10:00:00Z", wantErr: "--since"},
+		{name: "invalid status", status: 99, wantErr: "--status"},
+		{name: "invalid since", since: "yesterday", wantErr: "--since"},
+		{name: "invalid until", until: "tomorrow", wantErr: "--until"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildExportOptions("", tc.status, "", tc.since, tc.until, tc.limit)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want one mentioning %s", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestRunExportValidatesOptionsBeforeLoadingSession(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.json")
+	since := time.Date(2026, 10, 28, 10, 1, 0, 0, time.UTC)
+	cases := map[string]struct {
+		opts    exportOptions
+		wantErr string
+	}{
+		"negative limit":  {exportOptions{Limit: -1}, "--limit"},
+		"reversed window": {exportOptions{Since: since, Until: since.Add(-time.Second)}, "--since"},
+		"invalid status":  {exportOptions{Status: 600}, "--status"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := runExport(missing, "-", tc.opts, &bytes.Buffer{})
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want the %s usage error before the missing session", err, tc.wantErr)
+			}
+		})
+	}
 }

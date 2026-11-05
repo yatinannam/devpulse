@@ -17,8 +17,8 @@ devpulse export --method POST --status 500 --path-prefix /api/ --out ./artifacts
 # Export a bounded time window (timestamps must be RFC3339)
 devpulse export --since 2026-10-28T10:00:00Z --until 2026-10-28T11:00:00Z
 
-# Limit the number of matching rows
-devpulse export --method GET --limit 100 --out ./artifacts/recent-gets.csv
+# Keep only the first 100 matching rows (the oldest, in session order)
+devpulse export --method GET --limit 100 --out ./artifacts/first-gets.csv
 ```
 
 ## CSV schema
@@ -45,12 +45,22 @@ CSV values are escaped using Go's standard CSV writer, so commas, quotes, and ne
 - `--path-prefix` selects paths beginning with the supplied prefix.
 - `--since` includes requests at or after the RFC3339 timestamp.
 - `--until` includes requests at or before the RFC3339 timestamp.
-- `--limit` caps the number of matching requests written; zero means unlimited.
+- `--limit` caps the number of matching requests written; zero means unlimited. It keeps the first matches in session order. DevPulse records each request as it completes, oldest first, so `--limit 100` exports the oldest 100 matching requests, not the most recent.
 
-Filters can be combined. The limit is applied after the other filters, preserving the order of requests in the source session. A reversed time range and invalid status or limit values are rejected.
+Filters can be combined. The limit is applied after the other filters, preserving the order of requests in the source session. A reversed time range, an unparseable timestamp, a status outside 100 through 599, and a negative limit are usage errors: they are rejected before the session is read.
 
 ## Output and data handling
 
 By default, output goes to stdout, making it easy to pipe into other tools. Use `--out path.csv` to write a file. File output is written to a temporary file in the destination directory and renamed into place, and the resulting file is restricted to the current user where supported. The command refuses to overwrite the source session when `--out` names the same file as `--from`. The check compares file identity rather than path text, so case variants on Windows and macOS, hard links, and symlinks are rejected as well as identical paths.
 
+`--out -` and an empty `--out ""` both write to stdout.
+
 CSV may contain raw paths and host metadata. Review it before sharing externally. DevPulse does not upload the exported data.
+
+## Exit status
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | CSV written, including a header-only CSV when no request matches |
+| `1` | The session cannot be read, or the CSV cannot be written |
+| `2` | Usage error: unknown flag, positional argument, invalid `--status`, `--since` or `--until`, `--since` after `--until`, or a negative `--limit`. These are reported before the session is loaded, so a missing session does not hide them |

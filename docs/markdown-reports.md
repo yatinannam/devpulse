@@ -46,10 +46,10 @@ Endpoints are sorted by request volume, then error count, then path and method. 
 
 ## Output and data handling
 
-Markdown reports default to `devpulse-report.md`; JSON reports default to `devpulse-report.json`. Set `--out -` to write either format to standard output for pipelines. File output is written through a temporary file and renamed into place; generated reports use owner-only permissions where supported.
+Markdown reports default to `devpulse-report.md`; JSON reports default to `devpulse-report.json`. An explicit `--out` always wins: `--format json --out devpulse-report.md` writes JSON to `devpulse-report.md`. Set `--out -` or `--out ""` to write either format to standard output for pipelines. File output is written through a temporary file and renamed into place; generated reports use owner-only permissions where supported.
 
 Reports can include raw request paths and diagnostic details. Review them before sharing externally. The command does not upload data or modify the source session: it refuses an `--out` path that names the source session file, including case variants on Windows and macOS, hard links, and symlinks.
 
 ## Exit behavior
 
-The command exits non-zero if the session cannot be read, the report cannot be rendered or saved, or `--top` is negative. A value of `--top 0` disables slow-request entries while retaining the section header and an omission note.
+The command exits 2 for a usage error such as an unknown flag or a positional argument, and 1 if the session cannot be read, the report cannot be rendered or saved, `--format` is unsupported, or `--top` is negative. A value of `--top 0` disables slow-request entries while retaining the section header and an omission note.

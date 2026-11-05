@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"io"
 	"os"
 	"runtime"
 	"path/filepath"
@@ -104,5 +106,60 @@ func TestRunReportJSONDoesNotEscapeHTML(t *testing.T) {
 func TestRunReportRejectsUnsupportedFormat(t *testing.T) {
 	if err := runReportWithFormat("ignored", "-", "Report", 1, "yaml", &bytes.Buffer{}); err == nil {
 		t.Fatal("expected unsupported format to fail")
+	}
+}
+
+func TestParseReportArgsResolvesOutputPath(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"markdown default", nil, "devpulse-report.md"},
+		{"json default", []string{"--format", "json"}, "devpulse-report.json"},
+		{"explicit markdown name with json wins", []string{"--format", "json", "--out", "devpulse-report.md"}, "devpulse-report.md"},
+		{"explicit markdown name with equals wins", []string{"--out=devpulse-report.md", "--format=json"}, "devpulse-report.md"},
+		{"explicit path", []string{"--out", "artifacts/r.md"}, "artifacts/r.md"},
+		{"dash is stdout", []string{"--format", "json", "--out", "-"}, "-"},
+		{"empty is stdout", []string{"--out", ""}, "-"},
+		{"empty with json is stdout", []string{"--format", "json", "--out="}, "-"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseReportArgs(flag.NewFlagSet("report", flag.ContinueOnError), tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Out != tc.want {
+				t.Fatalf("Out = %q, want %q", got.Out, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseReportArgsReadsFlagsAndRejectsPositionalArguments(t *testing.T) {
+	got, err := parseReportArgs(flag.NewFlagSet("report", flag.ContinueOnError),
+		[]string{"--from", "s.json", "--title", "T", "--top", "7", "--format", "json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (reportArgs{From: "s.json", Out: "devpulse-report.json", Format: "json", Title: "T", Top: 7}); got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if _, err := parseReportArgs(fs, []string{"session.json"}); err == nil {
+		t.Fatal("expected a positional argument to be rejected")
+	}
+}
+
+func TestRunReportEmptyOutputWritesToStdout(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	var out bytes.Buffer
+	if err := runReportWithFormat(sessionPath, "", "Empty Out", 1, "markdown", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "# Empty Out") {
+		t.Fatalf("report was not written to stdout: %q", out.String())
 	}
 }
