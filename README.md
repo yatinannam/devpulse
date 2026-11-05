@@ -294,9 +294,12 @@ Duplicate detection groups requests by exact method and raw path, sorts each gro
 | Kind | Severity | Condition |
 | --- | --- | --- |
 | `service-added` | info | Port listening now but absent from the baseline |
+| `service-changed` | info | Same port, different service kind, or a different process name when both snapshots recorded one (as in `diff`) |
 | `service-removed` | warning | Port in the baseline but no longer listening |
-| `error-rate` | error | Current error rate ≥ 10 %, ≥ 2× the baseline rate, and ≥ 3 errors |
-| `latency-regression` | warning | Endpoint mean latency ≥ 2× the baseline with ≥ 3 requests |
+| `error-rate` | error | Current error rate ≥ 10 %, ≥ 2× the baseline rate, and ≥ 3 errors. A baseline with no requests counts as 0 % |
+| `latency-regression` | warning | Endpoint mean latency ≥ 2× the baseline with ≥ 3 requests. Latencies print to about three significant digits, for example `900µs` or `12.3ms` |
+
+Findings are sorted by severity (error, warning, info), then subject, with port subjects in numeric order.
 
 ### Timeline
 
