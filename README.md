@@ -275,6 +275,20 @@ All analysis is deterministic for a given session and never modifies it.
 
 Duplicate detection groups requests by exact method and raw path, sorts each group by time, and slides the profile window across it. A finding fires when any single window contains at least the minimum. This catches sustained request loops and a burst followed by a late straggler; the finding reports the densest burst. Details are in [docs/diagnostic-profiles.md](docs/diagnostic-profiles.md).
 
+### Diff kinds
+
+`diff` compares the baseline with the current environment. Mean latencies are rounded to the nearest millisecond before they are compared and printed. Changes are sorted by kind, then subject, with port subjects in numeric order.
+
+| Kind | Subject | Emitted when |
+| --- | --- | --- |
+| `endpoint-added` | `METHOD /path` | Endpoint seen now but absent from the baseline |
+| `endpoint-changed` | `METHOD /path` | Request count, error count or mean latency differs |
+| `endpoint-removed` | `METHOD /path` | Endpoint in the baseline but not seen now |
+| `service-added` | `:port` | Port listening now but absent from the baseline |
+| `service-changed` | `:port` | Same port, different service kind, or a different process name when both snapshots recorded one |
+| `service-removed` | `:port` | Port in the baseline but no longer listening |
+| `traffic-changed` | `traffic` | Total requests, errors or mean latency differs |
+
 ### Anomaly rules
 
 | Kind | Severity | Condition |
