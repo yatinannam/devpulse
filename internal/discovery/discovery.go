@@ -107,6 +107,9 @@ func probe(port int, timeout time.Duration) (bool, string, string, string) {
 		getReq, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
 		if err == nil {
 			getReq.Header.Set(traffic.ProbeHeader, "1")
+			// Ask for HTML as a browser does. Spring Boot renders its Whitelabel
+			// Error Page only for HTML clients and sends JSON to the rest.
+			getReq.Header.Set("Accept", "text/html,*/*;q=0.8")
 			getResp, err := client.Do(getReq)
 			if err == nil {
 				body, _ := io.ReadAll(io.LimitReader(getResp.Body, 8*1024))
@@ -136,10 +139,14 @@ func identify(h http.Header, body string) string {
 	if strings.Contains(server, "vite") || strings.Contains(x, "@vite") || strings.Contains(x, "vite/client") {
 		return "Node / Vite"
 	}
-	if strings.Contains(server, "express") {
+	// Stock Express sends X-Powered-By: Express and no Server header.
+	if strings.Contains(server, "express") || strings.Contains(strings.ToLower(h.Get("X-Powered-By")), "express") {
 		return "Node / Express"
 	}
-	if strings.Contains(server, "jetty") || strings.Contains(server, "tomcat") || strings.Contains(x, "spring") {
+	// The word "spring" in a page is no evidence of Spring. Spring Boot 1.x
+	// sends X-Application-Context; later versions render the Whitelabel Error
+	// Page for an unmapped path.
+	if strings.Contains(server, "jetty") || strings.Contains(server, "tomcat") || h.Get("X-Application-Context") != "" || strings.Contains(x, "whitelabel error page") {
 		return "Java / Spring"
 	}
 	if strings.Contains(server, "caddy") {

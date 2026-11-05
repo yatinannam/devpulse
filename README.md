@@ -226,7 +226,7 @@ Each listener is probed concurrently on the loopback interface:
 
 1. TCP dial to `127.0.0.1:<port>` with a 250 to 300 ms timeout. If that fails, dial `[::1]:<port>`, which catches servers bound only to IPv6 loopback (Vite binds `localhost` there on Node 17+). If both fail, the listener is non-HTTP. Later steps and the service URL (`http://127.0.0.1:3000` or `http://[::1]:5173`) use the address that answered.
 2. `HEAD /`, with redirects not followed.
-3. If the headers do not identify the server, `GET /` with the body capped at 8 KiB.
+3. If the headers do not identify the server, `GET /` with `Accept: text/html,*/*;q=0.8` and the body capped at 8 KiB. Asking for HTML as a browser does makes Spring Boot return its Whitelabel Error Page instead of a JSON error.
 
 Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it with `204` and `X-DevPulse-Proxy: 1`, so discovery from `status`, `watch`, `init`, `baseline` and `diff` is never forwarded to your app or recorded in the session.
 
@@ -237,8 +237,8 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 | `Server: gunicorn` | Python / Gunicorn |
 | `Server` contains `next`, or body has `__NEXT_DATA__` / `_next/static` | Node / Next.js |
 | `Server` contains `vite`, or body has `@vite` / `vite/client` | Node / Vite |
-| `Server` contains `express` | Node / Express |
-| `Server` contains `jetty` / `tomcat`, or body mentions `spring` | Java / Spring |
+| `Server` or `X-Powered-By` contains `express` (stock Express sends only `X-Powered-By: Express`) | Node / Express |
+| `Server` contains `jetty` / `tomcat`, an `X-Application-Context` header (Spring Boot 1.x), or body has `Whitelabel Error Page`. The word `spring` alone is not enough | Java / Spring |
 | `Server` contains `caddy` / `nginx` | Caddy / Nginx |
 | anything else that answers HTTP | HTTP service |
 
