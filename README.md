@@ -175,8 +175,11 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
             Recorder (mutex-guarded, keeps the newest 1000 requests)
                  │
                  │  SIGINT / SIGTERM
+                 │    stop accepting, wait up to 5s for in-flight requests, then close
+                 │    snapshot after shutdown, so in-flight requests are kept
+                 │    a second Ctrl+C quits at once, without saving
                  ▼
-            session.json (temp file + rename, mode 0600)
+            session.json (temp file + rename, mode 0600; exit 1 if the save fails)
 ```
 
 Each captured request becomes one record:
@@ -201,6 +204,8 @@ devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
 `--target` must be an `http://` or `https://` URL with a host. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+
+Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). Clients get 10 seconds to send their request headers.
 
 `report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. See [docs/markdown-reports.md](docs/markdown-reports.md).
 

@@ -342,22 +342,38 @@ func trafficCommand(args []string) {
 	fmt.Println("Waiting for HTTP traffic... (Ctrl+C to save and stop)")
 	fmt.Println()
 
-	server, err := traffic.Start(traffic.Handler(proxy), *listen)
+	server, serveErr, err := traffic.Start(traffic.Handler(proxy), *listen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
+	exitCode := 0
+	select {
+	case <-sig:
+	case err := <-serveErr:
+		fmt.Fprintf(os.Stderr, "devpulse: proxy stopped: %v\n", err)
+		exitCode = 1
+	}
+	// Restore the default signal handling, so a second Ctrl+C quits at once
+	// if shutdown is held up by a long-lived connection.
+	signal.Stop(sig)
 
+	fmt.Printf("\nStopping proxy: waiting up to %s for in-flight requests (Ctrl+C again to quit without saving)\n", traffic.DefaultShutdownTimeout)
+	if err := traffic.Shutdown(server, traffic.DefaultShutdownTimeout); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+	}
+	// Snapshot only after shutdown, so requests that were in flight are saved.
 	entries := recorder.Snapshot()
 	if err := traffic.SaveSession(sessionPath(), entries); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: could not save session: %v\n", err)
-	} else {
-		fmt.Printf("\nSaved %d requests to %s\n", len(entries), sessionPath())
+		os.Exit(1)
 	}
-	_ = traffic.Shutdown(server)
+	fmt.Printf("Saved %d requests to %s\n", len(entries), sessionPath())
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 }
 
 func statusCommand(args []string) {
