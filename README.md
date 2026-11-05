@@ -276,7 +276,7 @@ localhost:3000
 Default configuration:
 
 ```text
-listen = :9090
+listen = 127.0.0.1:9090
 target = http://localhost:3000
 session = ~/.devpulse/session.json
 ```
@@ -284,7 +284,7 @@ session = ~/.devpulse/session.json
 Example:
 
 ```bash
-devpulse traffic --target http://localhost:8080 --listen :9090
+devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090
 ```
 
 Captured requests are persisted as a versioned JSON session. Run `devpulse validate --from ./path/to/session.json` before processing a session in automation. Generate a shareable Markdown report with `devpulse report --from ./path/to/session.json --out ./artifacts/traffic.md`, or add `--format json` for machine-readable output. Use `--out -` for stdout and `--top 0` to omit slow-request details. See [the report guide](docs/markdown-reports.md) for examples and data-handling notes. Export individual request rows to CSV with `devpulse export --out ./artifacts/traffic.csv`; combine `--method`, `--status`, `--path-prefix`, `--since`, `--until`, and `--limit` to narrow the output. See the [CSV export guide](docs/traffic-csv-export.md) for the column schema and filtering behavior.
@@ -382,9 +382,11 @@ Configuration defaults are stored under the user's DevPulse configuration direct
 ```bash
 devpulse config
 devpulse config --target http://localhost:8080
-devpulse config --listen :9090
+devpulse config --listen 127.0.0.1:9090
 devpulse config --watch-interval 5s
 ```
+
+The proxy listens on the loopback interface (`127.0.0.1:9090`) by default, so the proxied app and its recorder are not reachable from the local network. To expose the proxy deliberately, pass `--listen 0.0.0.0:9090`. Configuration files saved by earlier versions may still contain `:9090` (all interfaces); run `devpulse config --listen 127.0.0.1:9090` to update them.
 
 Environment overrides:
 

@@ -17,7 +17,7 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{Listen: ":9090", Target: "http://localhost:3000", WatchInterval: "2s"}
+	return Config{Listen: "127.0.0.1:9090", Target: "http://localhost:3000", WatchInterval: "2s"}
 }
 
 // Path returns the highest-priority configuration path: explicit override,
