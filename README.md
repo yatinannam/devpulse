@@ -172,7 +172,8 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
                  │    body EOF/close ─► record status, latency, bytes (once)
                  │    ErrorHandler   ─► record 502, or 499 if the client cancelled (once)
                  ▼
-            Recorder (mutex-guarded, keeps the newest 1000 requests)
+            Recorder (mutex-guarded, keeps the newest --max-requests, default 10000)
+                 │    counts the older requests it drops, warns once on stderr
                  │
                  │  SIGINT / SIGTERM
                  │    stop accepting, wait up to 5s for in-flight requests, then close
@@ -197,13 +198,15 @@ Each captured request becomes one record:
 Sessions are versioned (`"version": 1`); readers reject unknown versions. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
 
 ```bash
-devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090
+devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090 --max-requests 50000
 devpulse validate --from ./artifacts/session.json --json
 devpulse report --from ./artifacts/session.json --out ./artifacts/traffic.md
 devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
 `--target` must be an `http://` or `https://` URL with a host. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+
+A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
 
 Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). Clients get 10 seconds to send their request headers.
 

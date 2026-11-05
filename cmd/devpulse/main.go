@@ -324,12 +324,19 @@ func trafficCommand(args []string) {
 	fs := flag.NewFlagSet("traffic", flag.ExitOnError)
 	listen := fs.String("listen", c.Listen, "proxy listen address")
 	target := fs.String("target", c.Target, "upstream application")
+	maxRequests := fs.Int("max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
 	mustParseArgs(fs, args)
+	if *maxRequests < 1 {
+		fmt.Fprintf(os.Stderr, "devpulse traffic: --max-requests must be at least 1, got %d\n", *maxRequests)
+		os.Exit(2)
+	}
 
-	recorder := traffic.NewRecorder(func(r traffic.Request) {
+	recorder := traffic.NewLimitedRecorder(*maxRequests, func(r traffic.Request) {
 		fmt.Printf("%s  %-6s %-32s %d  %s  → %s:%d\n",
 			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
 			r.Latency.Round(time.Millisecond), r.TargetHost, r.TargetPort)
+	}, func() {
+		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", *maxRequests)
 	})
 	proxy, err := traffic.NewProxy(*target, recorder)
 	if err != nil {
@@ -370,7 +377,11 @@ func trafficCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: could not save session: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Saved %d requests to %s\n", len(entries), sessionPath())
+	fmt.Printf("Saved %d requests to %s", len(entries), sessionPath())
+	if dropped := recorder.Dropped(); dropped > 0 {
+		fmt.Printf(" (%d older requests were dropped; raise --max-requests to keep more)", dropped)
+	}
+	fmt.Println()
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}

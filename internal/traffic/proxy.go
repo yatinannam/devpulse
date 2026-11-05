@@ -25,22 +25,61 @@ type Request struct {
 	TargetPort int           `json:"targetPort"`
 }
 type Recorder struct {
-	mu      sync.RWMutex
-	entries []Request
-	onAdd   func(Request)
+	mu          sync.RWMutex
+	entries     []Request
+	max         int
+	dropped     int
+	onAdd       func(Request)
+	onFirstDrop func()
 }
 
-func NewRecorder(onAdd func(Request)) *Recorder { return &Recorder{onAdd: onAdd} }
+// DefaultMaxRequests is how many requests a Recorder keeps unless it is
+// given another limit.
+const DefaultMaxRequests = 10000
+
+func NewRecorder(onAdd func(Request)) *Recorder {
+	return NewLimitedRecorder(DefaultMaxRequests, onAdd, nil)
+}
+
+// NewLimitedRecorder returns a Recorder that keeps the newest max requests
+// (DefaultMaxRequests when max < 1) and counts the older ones it drops.
+// onFirstDrop, when non-nil, is called once, the first time a request is
+// dropped, so the caller can warn that the capture is incomplete.
+func NewLimitedRecorder(max int, onAdd func(Request), onFirstDrop func()) *Recorder {
+	if max < 1 {
+		max = DefaultMaxRequests
+	}
+	return &Recorder{max: max, onAdd: onAdd, onFirstDrop: onFirstDrop}
+}
+
 func (r *Recorder) Add(e Request) {
 	r.mu.Lock()
 	r.entries = append(r.entries, e)
-	if len(r.entries) > 1000 {
-		r.entries = r.entries[len(r.entries)-1000:]
+	limit := r.max
+	if limit < 1 {
+		limit = DefaultMaxRequests
+	}
+	firstDrop := false
+	if over := len(r.entries) - limit; over > 0 {
+		r.entries = r.entries[over:]
+		firstDrop = r.dropped == 0
+		r.dropped += over
 	}
 	r.mu.Unlock()
+	if firstDrop && r.onFirstDrop != nil {
+		r.onFirstDrop()
+	}
 	if r.onAdd != nil {
 		r.onAdd(e)
 	}
+}
+
+// Dropped reports how many older requests were discarded to stay within the
+// limit.
+func (r *Recorder) Dropped() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.dropped
 }
 func (r *Recorder) Snapshot() []Request {
 	r.mu.RLock()
