@@ -22,7 +22,7 @@ The default session path is resolved using `DEVPULSE_SESSION` when set, otherwis
 | Duplicate minimum | 3 | 2 | 4 |
 | Duplicate window | 3 s | 5 s | 2 s |
 
-A duplicate finding groups entries by exact HTTP method and raw request path. The requests are sorted by timestamp before the first-to-last interval is checked. Query strings are not stripped by the doctor duplicate detector; endpoint normalization used by status and baseline aggregation is a separate operation.
+A duplicate finding groups entries by exact HTTP method and raw request path. The requests are sorted by timestamp and a window of the profile's duration slides across them. A finding is reported when any window contains at least the duplicate minimum, so a sustained request loop, or a burst followed by a late straggler, is still detected. The finding reports the count and time span of the densest burst. Query strings are not stripped by the doctor duplicate detector; endpoint normalization used by status and baseline aggregation is a separate operation.
 
 ## JSON envelope
 

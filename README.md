@@ -240,7 +240,7 @@ The `doctor` command supports three deterministic threshold profiles:
 | `strict` | 250 ms | 400 | 2 requests |
 | `permissive` | 1 s | 500 | 4 requests |
 
-Duplicate-request detection groups requests by method and raw path, sorts them by capture time, and checks whether the configured count occurred inside the profile's time window. Profiles change diagnostic thresholds; they do not change recorded traffic or mutate session files.
+Duplicate-request detection groups requests by method and raw path, sorts them by capture time, and slides the profile's time window across them. A finding is reported when at least the configured count of requests falls inside any one window, so a sustained request loop or a burst followed by a late straggler is still caught; the finding describes the densest burst. Profiles change diagnostic thresholds; they do not change recorded traffic or mutate session files.
 
 Examples:
 
