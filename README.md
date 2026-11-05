@@ -303,6 +303,8 @@ macOS  → lsof
 
 The implementation abstracts those platform details behind the same internal service model, so the CLI presents one interface across supported platforms.
 
+On Windows, both the IPv4 and IPv6 TCP tables are read, and listeners are recognised by their wildcard foreign address rather than the localized `LISTENING` state text, so non-English Windows installations work too. A port bound on both IPv4 and IPv6 by the same process is listed once.
+
 HTTP-capable listeners are distinguished from generic TCP listeners through bounded local probing.
 
 ---
