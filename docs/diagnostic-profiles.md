@@ -1,6 +1,6 @@
 # Diagnostic Profile Reference
 
-This page is a concise operational reference for `devpulse doctor`. The root README explains the main workflow; [architecture notes](architecture.md) describe implementation details and limitations.
+This page is a concise operational reference for `devpulse doctor`. The root README explains the main workflow; its [architecture](../README.md#architecture) and [known limitations](../README.md#known-limitations) sections describe implementation details and limitations.
 
 ## Invocation
 
