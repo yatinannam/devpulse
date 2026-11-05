@@ -32,7 +32,7 @@ Endpoints are sorted by request volume, then error count, then path and method. 
 
 Markdown reports default to `devpulse-report.md`; JSON reports default to `devpulse-report.json`. Set `--out -` to write either format to standard output for pipelines. File output is written through a temporary file and renamed into place; generated reports use owner-only permissions where supported.
 
-Reports can include raw request paths and diagnostic details. Review them before sharing externally. The command does not upload data or modify the source session.
+Reports can include raw request paths and diagnostic details. Review them before sharing externally. The command does not upload data or modify the source session: it refuses an `--out` path that names the source session file, including case variants on Windows and macOS, hard links, and symlinks.
 
 ## Exit behavior
 

@@ -31,6 +31,7 @@ func runReportWithFormat(sessionPath, outputPath, title string, top int, format 
 		if err := encoder.Encode(result); err != nil { return fmt.Errorf("encode JSON report: %w", err) }
 	} else if err := report.Render(&content, result); err != nil { return err }
 	if outputPath == "-" { _, err := io.WriteString(stdout, content.String()); return err }
+	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil { return err }
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil { return fmt.Errorf("create report directory: %w", err) }
 	tmp, err := os.CreateTemp(dir, ".devpulse-report-*.tmp")

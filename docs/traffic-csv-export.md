@@ -51,6 +51,6 @@ Filters can be combined. The limit is applied after the other filters, preservin
 
 ## Output and data handling
 
-By default, output goes to stdout, making it easy to pipe into other tools. Use `--out path.csv` to write a file. File output is written to a temporary file in the destination directory and renamed into place, and the resulting file is restricted to the current user where supported. The command refuses to overwrite the source session if the input and output paths resolve to the same location.
+By default, output goes to stdout, making it easy to pipe into other tools. Use `--out path.csv` to write a file. File output is written to a temporary file in the destination directory and renamed into place, and the resulting file is restricted to the current user where supported. The command refuses to overwrite the source session when `--out` names the same file as `--from`. The check compares file identity rather than path text, so case variants on Windows and macOS, hard links, and symlinks are rejected as well as identical paths.
 
 CSV may contain raw paths and host metadata. Review it before sharing externally. DevPulse does not upload the exported data.

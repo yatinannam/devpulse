@@ -74,16 +74,8 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 		}
 		return nil
 	}
-	inputAbs, err := filepath.Abs(sessionPath)
-	if err != nil {
-		return fmt.Errorf("resolve session path: %w", err)
-	}
-	outputAbs, err := filepath.Abs(outputPath)
-	if err != nil {
-		return fmt.Errorf("resolve output path: %w", err)
-	}
-	if inputAbs == outputAbs {
-		return fmt.Errorf("output path must differ from the source session")
+	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil {
+		return err
 	}
 	if err := writeExportFile(outputPath, content.Bytes()); err != nil {
 		return err
