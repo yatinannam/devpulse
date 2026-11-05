@@ -27,6 +27,7 @@ func runReportWithFormat(sessionPath, outputPath, title string, top int, format 
 	var content strings.Builder
 	if format == "json" {
 		encoder := json.NewEncoder(&content)
+		encoder.SetEscapeHTML(false)
 		encoder.SetIndent("", "  ")
 		if err := encoder.Encode(result); err != nil { return fmt.Errorf("encode JSON report: %w", err) }
 	} else if err := report.Render(&content, result); err != nil { return err }

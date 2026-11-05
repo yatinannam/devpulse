@@ -82,6 +82,25 @@ func TestRunReportWritesJSONFile(t *testing.T) {
 	}
 }
 
+func TestRunReportJSONDoesNotEscapeHTML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.json")
+	err := traffic.SaveSession(path, []traffic.Request{
+		{Time: time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC), Method: "GET", Path: "/search?a=1&b=<x>", Status: 200, Latency: time.Millisecond},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runReportWithFormat(path, "-", "A & B <report>", 1, "json", &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"title": "A & B <report>"`, `"path": "/search?a=1&b=<x>"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("JSON report missing %s: %s", want, out.String())
+		}
+	}
+}
+
 func TestRunReportRejectsUnsupportedFormat(t *testing.T) {
 	if err := runReportWithFormat("ignored", "-", "Report", 1, "yaml", &bytes.Buffer{}); err == nil {
 		t.Fatal("expected unsupported format to fail")
