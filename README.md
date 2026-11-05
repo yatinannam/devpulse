@@ -242,6 +242,8 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 | `Server` contains `caddy` / `nginx` | Caddy / Nginx |
 | anything else that answers HTTP | HTTP service |
 
+`status` joins captured requests to services by target port. Each port is shown once, even when several PIDs share it, so no request is counted twice. Endpoints are ordered by errors, average latency and request count, then by path and method, so `status` output and `baseline.json` are identical between runs over the same session.
+
 `init` detects the project type from marker files (`next.config.*`, `vite.config.{js,ts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It prefers the conventional port for that type (Next.js 3000, Vite 5173, Python 8000, Go/Java 8080). It then falls back to the only HTTP service, then to the first of 3000, 5173, 8000, 8080, 8081 and 9000.
 
 ---

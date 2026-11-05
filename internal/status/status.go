@@ -127,7 +127,15 @@ func Endpoints(entries []traffic.Request) []Endpoint {
 		if out[i].Average != out[j].Average {
 			return out[i].Average > out[j].Average
 		}
-		return out[i].Count > out[j].Count
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		// Map iteration order is random; break ties so the order (and
+		// baseline.json) is the same on every run.
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
 	})
 	return out
 }
@@ -145,7 +153,14 @@ func GroupByService(services []discovery.Service, entries []traffic.Request) []S
 		groups[e.TargetPort] = append(groups[e.TargetPort], e)
 	}
 	out := make([]ServiceTraffic, 0, len(services))
+	// Requests are keyed by port, so a port listed twice (several PIDs on
+	// one socket) would count every request once per copy. Keep the first.
+	seen := map[int]bool{}
 	for _, s := range services {
+		if seen[s.Port] {
+			continue
+		}
+		seen[s.Port] = true
 		es := groups[s.Port]
 		summary := Build(es)
 		out = append(out, ServiceTraffic{Service: s, Requests: Endpoints(es), Total: summary.Total, Errors: summary.Errors, Slow: summary.Slow, Average: summary.Average})
