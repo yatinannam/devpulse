@@ -93,7 +93,7 @@ func exportCommand(args []string) {
 	limit := fs.Int("limit", 0, "maximum number of matching requests to export (0 means unlimited)")
 	sinceText := fs.String("since", "", "include requests at or after RFC3339 timestamp")
 	untilText := fs.String("until", "", "include requests at or before RFC3339 timestamp")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	since, err := parseExportTime("--since", *sinceText)
 	if err != nil {

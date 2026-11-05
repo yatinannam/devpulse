@@ -227,6 +227,8 @@ Every command is intended to expose command-specific flags through:
 devpulse <command> --help
 ```
 
+Commands accept flags only. Pass files with flags such as `--from`; a stray positional argument (for example `devpulse validate ./session.json`) is rejected with exit status 2 instead of being silently ignored along with every flag after it.
+
 
 ### Diagnostic profiles and automation
 

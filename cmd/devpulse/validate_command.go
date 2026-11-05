@@ -58,7 +58,7 @@ func validateCommand(args []string) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to validate")
 	jsonOutput := fs.Bool("json", false, "print validation report as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	code, err := runValidate(*from, *jsonOutput, os.Stdout)
 	if err != nil {

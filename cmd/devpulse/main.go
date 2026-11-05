@@ -75,7 +75,7 @@ func main() {
 
 func initCommand(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	projectInfo, err := project.Detect(".")
 	if err != nil {
@@ -120,7 +120,7 @@ func baselineCommand(args []string) {
 	fs := flag.NewFlagSet("baseline", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to snapshot")
 	to := fs.String("to", baseline.Path("."), "baseline output path")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	s, err := traffic.LoadSession(*from)
 	if err != nil {
@@ -144,7 +144,7 @@ func diffCommand(args []string) {
 	from := fs.String("from", baseline.Path("."), "baseline snapshot to compare against")
 	session := fs.String("session", sessionPath(), "current traffic session")
 	jsonOutput := fs.Bool("json", false, "print changes as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	base, err := baseline.Load(*from)
 	if err != nil {
@@ -208,7 +208,7 @@ func recentCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to inspect")
 	n := fs.Int("n", 10, "number of recent requests to show")
 	jsonOutput := fs.Bool("json", false, "print recent requests as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	if *n < 1 {
 		fmt.Fprintln(os.Stderr, "devpulse: -n must be greater than 0")
@@ -258,7 +258,7 @@ func configCommand(args []string) {
 	setTarget := fs.String("target", "", "set default upstream")
 	setListen := fs.String("listen", "", "set proxy listen address")
 	setInterval := fs.String("watch-interval", "", "set watch refresh interval")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	c := loadConfig()
 	changed := false
@@ -286,7 +286,7 @@ func configCommand(args []string) {
 func portsCommand(args []string) {
 	fs := flag.NewFlagSet("ports", flag.ExitOnError)
 	watch := fs.Bool("watch", false, "watch for port changes")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	entries, err := ports.List()
 	if err != nil {
@@ -319,7 +319,7 @@ func trafficCommand(args []string) {
 	fs := flag.NewFlagSet("traffic", flag.ExitOnError)
 	listen := fs.String("listen", c.Listen, "proxy listen address")
 	target := fs.String("target", c.Target, "upstream application")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	recorder := traffic.NewRecorder(func(r traffic.Request) {
 		fmt.Printf("%s  %-6s %-32s %d  %s  → %s:%d\n",
@@ -358,7 +358,7 @@ func trafficCommand(args []string) {
 func statusCommand(args []string) {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	services, err := discovery.Discover(300 * time.Millisecond)
 	if err != nil {
@@ -406,7 +406,7 @@ func watchCommand(args []string) {
 	fs := flag.NewFlagSet("watch", flag.ExitOnError)
 	interval := fs.Duration("interval", defaultInterval, "refresh interval")
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
@@ -447,7 +447,7 @@ func doctorCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to analyze")
 	profileName := fs.String("profile", string(doctor.ProfileDefault), "diagnostic thresholds: default, strict, permissive")
 	jsonOutput := fs.Bool("json", false, "print diagnostic findings as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	profile := doctor.Profile(strings.ToLower(strings.TrimSpace(*profileName)))
 	if _, err := doctor.ThresholdsFor(profile); err != nil {

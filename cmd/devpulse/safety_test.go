@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -74,6 +76,32 @@ func TestRunReportRejectsOutputThatIsTheSession(t *testing.T) {
 			}
 			if !bytes.Equal(after, original) {
 				t.Fatal("source session was modified")
+			}
+		})
+	}
+}
+
+func TestParseArgsRejectsPositionalArguments(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{"flags only", []string{"--from", "session.json"}, false},
+		{"no args", nil, false},
+		{"bare path", []string{"./ci/session.json"}, true},
+		{"flag after positional", []string{"session.json", "--out", "x.csv"}, true},
+		{"trailing positional", []string{"--from", "a.json", "extra"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			fs.SetOutput(io.Discard)
+			fs.String("from", "", "")
+			fs.String("out", "", "")
+			err := parseArgs(fs, tc.args)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("parseArgs(%q) error = %v, wantErr %v", tc.args, err, tc.wantErr)
 			}
 		})
 	}

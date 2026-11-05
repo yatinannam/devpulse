@@ -22,7 +22,7 @@ func summaryCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
 	slowestCount := fs.Int("slowest", 5, "number of slowest requests to include (0 disables)")
 	jsonOutput := fs.Bool("json", false, "print summary as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	if *slowestCount < 0 {
 		fmt.Fprintln(os.Stderr, "devpulse: --slowest must be zero or greater")

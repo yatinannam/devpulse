@@ -52,7 +52,7 @@ func reportCommand(args []string) {
 	format := fs.String("format", "markdown", "report format: markdown or json")
 	title := fs.String("title", "DevPulse Traffic Report", "report heading")
 	top := fs.Int("top", 5, "number of slowest requests to include (0 disables)")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 	if *format == "json" && *out == "devpulse-report.md" { *out = "devpulse-report.json" }
 	if err := runReportWithFormat(*from, *out, *title, *top, *format, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)

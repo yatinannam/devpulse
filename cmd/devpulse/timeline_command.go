@@ -22,7 +22,7 @@ func timelineCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to inspect")
 	width := fs.Duration("bucket", time.Minute, "bucket width, for example 30s or 5m")
 	jsonOutput := fs.Bool("json", false, "print timeline as JSON")
-	_ = fs.Parse(args)
+	mustParseArgs(fs, args)
 
 	if *width <= 0 {
 		fmt.Fprintln(os.Stderr, "devpulse: --bucket must be greater than zero")
