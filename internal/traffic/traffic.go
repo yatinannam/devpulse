@@ -3,6 +3,7 @@ package traffic
 import (
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 func Print(entries []Request) {
@@ -18,9 +19,11 @@ func Print(entries []Request) {
 	}
 }
 
+// truncate shortens s to at most n runes, ending in an ellipsis. It counts
+// runes rather than bytes so a multi-byte character is never split.
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if utf8.RuneCountInString(s) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string([]rune(s)[:n-1]) + "…"
 }

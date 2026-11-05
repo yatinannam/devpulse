@@ -40,6 +40,12 @@ func SaveSession(path string, entries []Request) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write session: %w", err)
 	}
+	// Flush to disk before the rename, so a crash or power loss cannot leave
+	// an empty or partial file under the session's name.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush session: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temporary session: %w", err)
 	}

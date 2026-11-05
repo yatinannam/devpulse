@@ -180,7 +180,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
                  │    snapshot after shutdown, so in-flight requests are kept
                  │    a second Ctrl+C quits at once, without saving
                  ▼
-            session.json (temp file + rename, mode 0600; exit 1 if the save fails)
+            session.json (temp file + fsync + rename, mode 0600; exit 1 if the save fails)
 ```
 
 Each captured request becomes one record:
