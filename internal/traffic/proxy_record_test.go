@@ -348,3 +348,59 @@ func TestProxyWhoseTargetIsItselfStopsAfterOneHop(t *testing.T) {
 		t.Fatalf("recorded %d requests for one looped request, want 2", len(entries))
 	}
 }
+
+func TestProxyRecordsAnUpstreamStatusBelow100As502(t *testing.T) {
+	// Go's client accepts any three-digit status, but ResponseWriter panics
+	// on codes below 100, so a bogus "000" used to crash the handler and the
+	// request was never recorded.
+	for _, code := range []string{"000", "099"} {
+		t.Run(code, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+					return
+				}
+				_, _ = io.WriteString(conn, "HTTP/1.1 "+code+" Bogus\r\nContent-Length: 2\r\n\r\nhi")
+			}()
+			recorder := NewRecorder(nil)
+			proxy, err := NewProxy("http://"+listener.Addr().String(), recorder)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var serverLog, proxyLog bytes.Buffer
+			previous := log.Writer()
+			log.SetOutput(&proxyLog)
+			defer log.SetOutput(previous)
+			server := httptest.NewUnstartedServer(Handler(proxy))
+			server.Config.ErrorLog = log.New(&serverLog, "", 0)
+			server.Start()
+			defer server.Close()
+
+			resp, err := http.Get(server.URL + "/bogus")
+			if err != nil {
+				t.Fatalf("client error %v; server log: %s", err, serverLog.String())
+			}
+			resp.Body.Close()
+			server.Close()
+
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("client got %d, want 502", resp.StatusCode)
+			}
+			if strings.Contains(serverLog.String(), "panic") {
+				t.Fatalf("handler panicked: %s", serverLog.String())
+			}
+			if got := onlyEntry(t, recorder).Status; got != http.StatusBadGateway {
+				t.Fatalf("recorded status %d, want 502", got)
+			}
+		})
+	}
+}

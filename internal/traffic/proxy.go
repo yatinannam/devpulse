@@ -111,6 +111,12 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		recorder.Add(Request{Time: state.start, Method: req.Method, Path: state.uri, Status: status, Latency: time.Since(state.start), Bytes: bytes, TargetHost: u.Hostname(), TargetPort: port})
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.StatusCode < 100 {
+			// Go's client accepts any three-digit status, but ResponseWriter
+			// panics on codes below 100. Failing here sends the request to
+			// ErrorHandler, which records and answers 502.
+			return fmt.Errorf("upstream sent invalid status code %03d", resp.StatusCode)
+		}
 		state, ok := resp.Request.Context().Value(stateKey{}).(*requestState)
 		if !ok {
 			return nil
