@@ -428,6 +428,19 @@ func watchCommand(args []string) {
 	}
 }
 
+// doctorEnvelope is the stable `doctor --json` output shape documented in
+// docs/diagnostic-profiles.md.
+type doctorEnvelope struct {
+	Session  string           `json:"session"`
+	Profile  doctor.Profile   `json:"profile"`
+	Requests int              `json:"requests"`
+	Findings []doctor.Finding `json:"findings"`
+}
+
+func newDoctorEnvelope(session string, profile doctor.Profile, requests int, findings []doctor.Finding) doctorEnvelope {
+	return doctorEnvelope{Session: session, Profile: profile, Requests: requests, Findings: findings}
+}
+
 func doctorCommand(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	from := fs.String("from", sessionPath(), "traffic session to analyze")
@@ -447,7 +460,7 @@ func doctorCommand(args []string) {
 	}
 	findings := doctor.AnalyzeWithProfile(s.Requests, profile)
 	if *jsonOutput {
-		if err := output.WriteJSON(os.Stdout, struct { Session string `json:"session"`; Profile doctor.Profile `json:"profile"`; Requests int `json:"requests"`; Findings []doctor.Finding `json:"findings"` }{*from, profile, len(s.Requests), findings}); err != nil {
+		if err := output.WriteJSON(os.Stdout, newDoctorEnvelope(*from, profile, len(s.Requests), findings)); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
