@@ -285,7 +285,7 @@ devpulse report --from ./artifacts/session.json --out ./artifacts/traffic.md
 devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
-`--target` must be an `http://` or `https://` URL with a host. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+`--target` must be an `http://` or `https://` URL with a host and, if it names a port, a port from 1 to 65535. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
 
 A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
 

@@ -140,6 +140,8 @@ func TestNewProxyRejectsUnusableTargets(t *testing.T) {
 		{target: "localhost:3000", want: `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`},
 		{target: "ftp://x", want: `invalid target "ftp://x": the scheme must be http or https`},
 		{target: "http://", want: `invalid target "http://": missing host`},
+		{target: "http://localhost:0", want: `invalid target "http://localhost:0": the port must be between 1 and 65535`},
+		{target: "http://localhost:99999", want: `invalid target "http://localhost:99999": the port must be between 1 and 65535`},
 	} {
 		_, err := NewProxy(tc.target, NewRecorder(nil))
 		if err == nil {

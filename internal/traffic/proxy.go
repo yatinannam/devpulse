@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -165,8 +166,21 @@ func checkTarget(target string, u *url.URL) error {
 		return fmt.Errorf("invalid target %q: the scheme must be http or https", target)
 	case u.Hostname() == "":
 		return fmt.Errorf("invalid target %q: missing host, for example %s", target, example)
+	case !validPort(u.Port()):
+		return fmt.Errorf("invalid target %q: the port must be between 1 and 65535", target)
 	}
 	return nil
+}
+
+// validPort reports whether p is empty (the scheme's default port) or a port
+// number a connection can be made to. url.Parse checks only that a port is
+// made of digits, so it accepts 0 and 99999.
+func validPort(p string) bool {
+	if p == "" {
+		return true
+	}
+	n, err := strconv.Atoi(p)
+	return err == nil && n >= 1 && n <= 65535
 }
 
 // StatusClientClosedRequest is recorded when the client cancels a request
