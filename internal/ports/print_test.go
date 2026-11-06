@@ -74,9 +74,28 @@ func TestRenderChange(t *testing.T) {
 		[]Entry{{Port: 5173, Process: "node", PID: "9912"}},
 		[]Entry{{Port: 8080, PID: "77"}, {Port: 49664, Process: "lsass", PID: "1520"}})
 	want := "" +
+		"10:01:02  + :5173  node (pid 9912) opened\n" +
 		"10:01:02  - :8080  pid 77 closed\n" +
-		"10:01:02  - :49664 lsass (pid 1520) closed\n" +
-		"10:01:02  + :5173  node (pid 9912) opened\n"
+		"10:01:02  - :49664 lsass (pid 1520) closed\n"
+	if got := b.String(); got != want {
+		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRenderChangePrintsOnePollInPortOrder(t *testing.T) {
+	// README: changes within one poll are printed in port order, with a
+	// port's closed process before its opened one.
+	ui.SetColor(false)
+	now := time.Date(2026, 11, 5, 10, 1, 2, 0, time.Local)
+	var b strings.Builder
+	RenderChange(&b, now, 80,
+		[]Entry{{Port: 3000, Process: "node", PID: "1"}, {Port: 4000, Process: "air", PID: "21"}},
+		[]Entry{{Port: 4000, Process: "air", PID: "20"}, {Port: 5173, Process: "node", PID: "2"}})
+	want := "" +
+		"10:01:02  + :3000  node (pid 1) opened\n" +
+		"10:01:02  - :4000  air (pid 20) closed\n" +
+		"10:01:02  + :4000  air (pid 21) opened\n" +
+		"10:01:02  - :5173  node (pid 2) closed\n"
 	if got := b.String(); got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
