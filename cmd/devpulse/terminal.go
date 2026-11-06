@@ -57,6 +57,45 @@ func writeNoTraffic(w io.Writer, width int) {
 	ui.Wrapped(w, width, 0, ui.Plain("No captured traffic yet. Run devpulse traffic, then send requests to "+proxyURL()+"."))
 }
 
+// requestTable lists requests in the given order as Time, Method, Path,
+// Status and Latency. The path absorbs the remaining width and truncates;
+// status and latency are colored.
+func requestTable(requests []traffic.Request, indent int) *ui.Table {
+	table := ui.NewTable(
+		ui.Column{Header: "Time"},
+		ui.Column{Header: "Method"},
+		ui.Column{Header: "Path", Flex: true},
+		ui.Column{Header: "Status", Align: ui.AlignRight},
+		ui.Column{Header: "Latency", Align: ui.AlignRight},
+	)
+	table.Indent = indent
+	for _, r := range requests {
+		stamp := ui.Styled("--:--:--", ui.Muted)
+		if !r.Time.IsZero() {
+			stamp = ui.Plain(r.Time.Local().Format("15:04:05"))
+		}
+		table.Row(stamp, ui.Plain(r.Method), ui.Plain(r.Path), ui.Status(r.Status), ui.Latency(r.Latency))
+	}
+	return table
+}
+
+// renderRecent writes the recent command's text view. recent is in capture
+// order; it is listed newest first.
+func renderRecent(w io.Writer, width int, path string, total int, recent []traffic.Request) {
+	ui.Title(w, width, "recent", sessionContext(path, total))
+	if len(recent) == 0 {
+		writeNoTraffic(w, width)
+		return
+	}
+	newestFirst := make([]traffic.Request, len(recent))
+	for i, r := range recent {
+		newestFirst[len(recent)-1-i] = r
+	}
+	requestTable(newestFirst, 0).Render(w, width)
+	fmt.Fprintln(w)
+	ui.Writeln(w, ui.Styled(fmt.Sprintf("Showing %d of %s", len(recent), ui.Count(total, "request", "requests")), ui.Muted))
+}
+
 // latencyFact is a dim label followed by a colored latency: "p95 1.3s".
 func latencyFact(label string, d time.Duration) ui.Line {
 	return ui.Join(ui.Styled(label+" ", ui.Muted), ui.Latency(d))

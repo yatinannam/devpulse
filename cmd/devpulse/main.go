@@ -239,19 +239,7 @@ func recentCommand(args []string) {
 		}
 		return
 	}
-	fmt.Println("RECENT ACTIVITY")
-	fmt.Println("────────────────────────────────────────────────")
-	for i := len(recent) - 1; i >= 0; i-- {
-		r := recent[i]
-		marker := " "
-		if r.Status >= 400 || r.Latency >= 500*time.Millisecond {
-			marker = "!"
-		}
-		fmt.Printf("%s %s  %-6s %-32s %3d  %s\n", marker,
-			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
-			r.Latency.Round(time.Millisecond))
-	}
-	fmt.Printf("\nShowing %d of %d requests\n", len(recent), len(s.Requests))
+	renderRecent(os.Stdout, ui.TermWidth(), *from, len(s.Requests), recent)
 }
 
 func configCommand(args []string) {

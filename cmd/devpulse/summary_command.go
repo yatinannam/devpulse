@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
-	"time"
+	"strconv"
 
 	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/summary"
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 type summaryPayload struct {
@@ -49,22 +51,41 @@ func summaryCommand(args []string) {
 		return
 	}
 
-	fmt.Println("DEVPULSE SUMMARY")
-	fmt.Println("------------------------------------------------")
-	fmt.Printf("Session: %s\n", *from)
-	fmt.Printf("Requests: %d  Errors: %d  Error rate: %.1f%%\n", report.Total, report.Errors, report.ErrorRate*100)
-	fmt.Printf("Average: %s  P50: %s  P95: %s  P99: %s\n",
-		report.Average.Round(time.Millisecond),
-		report.P50.Round(time.Millisecond),
-		report.P95.Round(time.Millisecond),
-		report.P99.Round(time.Millisecond))
-	fmt.Println()
-	fmt.Println("SLOWEST REQUESTS")
-	if len(slowest) == 0 {
-		fmt.Println("No requests captured.")
+	renderSummary(os.Stdout, ui.TermWidth(), *from, s.Requests, report, slowest)
+}
+
+// renderSummary writes aligned metrics, the latency pulse in request order,
+// then the slowest requests.
+func renderSummary(w io.Writer, width int, path string, requests []traffic.Request, report summary.Report, slowest []traffic.Request) {
+	ui.Title(w, width, "summary", sessionContext(path, report.Total))
+	if report.Total == 0 {
+		writeNoTraffic(w, width)
 		return
 	}
-	for i, request := range slowest {
-		fmt.Printf("%d. %-6s %-32s %3d  %s\n", i+1, request.Method, request.Path, request.Status, request.Latency.Round(time.Millisecond))
+	errorStyle := ui.Style(ui.Normal)
+	if report.Errors > 0 {
+		errorStyle = ui.Error
 	}
+	const caption = "  latency in request order"
+	const keyWidth = len("Requests")
+	latencies := make([]float64, len(requests))
+	for i, r := range requests {
+		latencies[i] = float64(r.Latency)
+	}
+	pulseWidth := min(60, width-keyWidth-2-len(caption))
+	ui.KVList(w, width, 0, []ui.KV{
+		{Key: "Requests", Value: ui.Styled(strconv.Itoa(report.Total), ui.Bold)},
+		{Key: "Errors", Value: ui.Styled(fmt.Sprintf("%d (%.1f%%)", report.Errors, report.ErrorRate*100), errorStyle)},
+		{Key: "Average", Value: ui.Latency(report.Average)},
+		{Key: "p50", Value: ui.Latency(report.P50)},
+		{Key: "p95", Value: ui.Latency(report.P95)},
+		{Key: "p99", Value: ui.Latency(report.P99)},
+		{Key: "Pulse", Value: ui.Join(ui.Styled(ui.Sparkline(latencies, pulseWidth), ui.Accent), ui.Styled(caption, ui.Muted))},
+	})
+	if len(slowest) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	ui.Heading(w, "Slowest requests", "")
+	requestTable(slowest, 2).Render(w, width)
 }
