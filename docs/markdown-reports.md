@@ -52,4 +52,4 @@ Reports can include raw request paths and diagnostic details. Review them before
 
 ## Exit behavior
 
-The command exits 2 for a usage error such as an unknown flag or a positional argument, and 1 if the session cannot be read, the report cannot be rendered or saved, `--format` is unsupported, or `--top` is negative. A value of `--top 0` disables slow-request entries while retaining the section header and an omission note.
+The command exits 2 for a usage error (an unknown flag, a positional argument, an unsupported `--format`, or a negative `--top`), which is reported before the session is loaded. It exits 1 if the session cannot be read or the report cannot be rendered or saved. A value of `--top 0` disables slow-request entries while retaining the section header and an omission note.

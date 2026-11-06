@@ -154,7 +154,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
 
 ---
 

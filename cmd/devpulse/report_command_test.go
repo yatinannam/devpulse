@@ -163,3 +163,15 @@ func TestRunReportEmptyOutputWritesToStdout(t *testing.T) {
 		t.Fatalf("report was not written to stdout: %q", out.String())
 	}
 }
+
+func TestParseReportArgsRejectsInvalidTopAndFormatAsUsageErrors(t *testing.T) {
+	// Usage errors are reported by parseReportArgs so reportCommand exits 2,
+	// like every other command, instead of 1 after trying to load a session.
+	for _, args := range [][]string{{"--top", "-1"}, {"--format", "yaml"}, {"--format", "JSON "}} {
+		fs := flag.NewFlagSet("report", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		if _, err := parseReportArgs(fs, args); err == nil {
+			t.Errorf("parseReportArgs(%q) succeeded, want a usage error", args)
+		}
+	}
+}

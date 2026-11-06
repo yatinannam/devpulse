@@ -66,6 +66,15 @@ func parseReportArgs(fs *flag.FlagSet, args []string) (reportArgs, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return a, err
 	}
+	// Validate here so bad values are usage errors (exit 2) and are reported
+	// before any session is loaded. runReportWithFormat keeps its own checks
+	// for library callers.
+	if a.Top < 0 {
+		return a, fmt.Errorf("--top must be zero or greater")
+	}
+	if a.Format != "markdown" && a.Format != "json" {
+		return a, fmt.Errorf("unsupported report format %q (choose markdown or json)", a.Format)
+	}
 	outSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "out" {
