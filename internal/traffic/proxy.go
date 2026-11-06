@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Request struct {
@@ -300,11 +301,41 @@ func Handler(proxy http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		state := &requestState{start: time.Now(), uri: r.URL.RequestURI(), looped: r.Header.Get(ForwardedHeader) != ""}
+		state := &requestState{start: time.Now(), uri: clientURI(r), looped: r.Header.Get(ForwardedHeader) != ""}
 		ctx := context.WithValue(r.Context(), stateKey{}, state)
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// clientURI is the request target to record: the raw target exactly as the
+// client sent it when it is origin-form ("/path?query") or "*". Rebuilding
+// it from the parsed URL would re-encode characters browsers send raw, such
+// as "|" and "^". Two cases fall back to the parsed URL:
+//
+//   - a raw target that is not valid UTF-8, which JSON cannot store, is
+//     recorded percent-encoded;
+//   - absolute-form ("http://host/path"), authority-form (CONNECT
+//     "host:443") and opaque ("h:80") targets keep only their path and
+//     query, so every recorded path begins with "/" as session validation
+//     requires.
+func clientURI(r *http.Request) string {
+	raw := r.RequestURI
+	if strings.HasPrefix(raw, "/") || raw == "*" {
+		if utf8.ValidString(raw) {
+			return raw
+		}
+		return r.URL.RequestURI()
+	}
+	path := r.URL.EscapedPath()
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if r.URL.ForceQuery || r.URL.RawQuery != "" {
+		path += "?" + r.URL.RawQuery
+	}
+	return path
+}
+
 func DrainBody(resp *http.Response) {
 	if resp.Body != nil {
 		_, _ = io.Copy(io.Discard, resp.Body)

@@ -193,6 +193,55 @@ func TestProxyRecordsTheClientRequestURI(t *testing.T) {
 	}
 }
 
+func TestProxyRecordsTheRequestTargetAsSent(t *testing.T) {
+	// The path used to be rebuilt from the parsed URL, which re-encodes
+	// characters browsers send raw: /a|b^c was recorded as /a%7Cb%5Ec.
+	// Targets that are not origin-form keep only their path and query, so
+	// every recorded path still begins with "/" or is "*", as
+	// devpulse validate requires.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer backend.Close()
+	for _, tc := range []struct{ line, want string }{
+		{"GET /a|b^c?q=é HTTP/1.1", "/a|b^c?q=é"},
+		{"GET /a#frag HTTP/1.1", "/a#frag"},
+		{"GET //twice HTTP/1.1", "//twice"},
+		{"GET * HTTP/1.1", "*"},
+		// JSON cannot hold invalid UTF-8, so keep the percent-encoded form.
+		{"GET /\xff HTTP/1.1", "/%FF"},
+		// Absolute-form, authority-form and opaque targets.
+		{"GET http://example.com/x?y=1 HTTP/1.1", "/x?y=1"},
+		{"GET http://example.com HTTP/1.1", "/"},
+		{"GET h:80 HTTP/1.1", "/"},
+		{"GET http:foo HTTP/1.1", "/"},
+		{"CONNECT example.com:443 HTTP/1.1", "/"},
+	} {
+		recorder, proxy := startCapture(t, backend.URL)
+		conn, err := net.Dial("tcp", proxy.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.WriteString(conn, tc.line+"\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+		if resp, err := http.ReadResponse(bufio.NewReader(conn), nil); err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+		conn.Close()
+		proxy.Close()
+		entries := recorder.Snapshot()
+		if len(entries) != 1 {
+			t.Errorf("%q: recorded %d requests, want 1", tc.line, len(entries))
+			continue
+		}
+		got := entries[0].Path
+		if got != tc.want {
+			t.Errorf("%q: recorded path %q, want %q", tc.line, got, tc.want)
+		}
+		if !strings.HasPrefix(got, "/") && got != "*" {
+			t.Errorf("%q: recorded path %q would fail session validation", tc.line, got)
+		}
+	}
+}
+
 func TestProxyRecordsClientCancellationAs499(t *testing.T) {
 	arrived := make(chan struct{}, 1)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

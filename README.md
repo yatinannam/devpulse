@@ -271,7 +271,7 @@ Each captured request becomes one record:
 | --- | --- | --- |
 | `time` | RFC 3339 timestamp | Proxy receive time |
 | `method` | string | Request method |
-| `path` | string | Client request URI, including the query string, before any `--target` path prefix |
+| `path` | string | Client request URI as sent, including the query string, before any `--target` path prefix. Absolute-form and `CONNECT` targets keep only their path and query |
 | `status` | int | Upstream status; `502` if the upstream could not be reached or sent a status code below 100, `499` if the client cancelled first, `508` if the request had already passed through a DevPulse proxy |
 | `latency` | int (ns) | Receive time until the response body finished streaming |
 | `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
