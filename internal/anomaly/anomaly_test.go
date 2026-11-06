@@ -163,3 +163,20 @@ func TestCompareReportsServiceChangedAsInfo(t *testing.T) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
+
+func TestCompareNamesUnidentifiedServicesInAddedAndRemovedMessages(t *testing.T) {
+	// A non-HTTP listener has an empty Kind, which used to render as the
+	// double-spaced "service  started".
+	base := baseline.Snapshot{Version: baseline.Version, Services: []baseline.Service{{Port: 5432}}}
+	current := baseline.Snapshot{Version: baseline.Version, Services: []baseline.Service{{Port: 6379, Process: "redis-server"}}}
+	messages := map[string]string{}
+	for _, f := range Compare(base, current) {
+		messages[f.Kind] = f.Message
+	}
+	if got, want := messages["service-added"], "redis-server started listening"; got != want {
+		t.Errorf("service-added message = %q, want %q", got, want)
+	}
+	if got, want := messages["service-removed"], "TCP service is no longer listening"; got != want {
+		t.Errorf("service-removed message = %q, want %q", got, want)
+	}
+}

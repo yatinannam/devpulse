@@ -37,12 +37,12 @@ func Compare(base, current baseline.Snapshot) []Finding {
 	}
 	for port, s := range currentServices {
 		if _, ok := baseServices[port]; !ok {
-			findings = append(findings, Finding{Severity: SeverityInfo, Kind: "service-added", Subject: fmt.Sprintf(":%d", port), Message: fmt.Sprintf("service %s started", s.Kind)})
+			findings = append(findings, Finding{Severity: SeverityInfo, Kind: "service-added", Subject: fmt.Sprintf(":%d", port), Message: fmt.Sprintf("%s started listening", describe(s))})
 		}
 	}
 	for port, s := range baseServices {
 		if _, ok := currentServices[port]; !ok {
-			findings = append(findings, Finding{Severity: SeverityWarning, Kind: "service-removed", Subject: fmt.Sprintf(":%d", port), Message: fmt.Sprintf("service %s is no longer listening", s.Kind)})
+			findings = append(findings, Finding{Severity: SeverityWarning, Kind: "service-removed", Subject: fmt.Sprintf(":%d", port), Message: fmt.Sprintf("%s is no longer listening", describe(s))})
 		}
 	}
 	for port, s := range currentServices {
