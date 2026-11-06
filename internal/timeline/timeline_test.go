@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	_ "time/tzdata" // real DST zones on every CI host
 
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
@@ -144,4 +145,67 @@ func TestBuildAlignsBucketsToLocalWallClock(t *testing.T) {
 			})
 		})
 	}
+}
+
+// A DST change inside a bucket must not move the bucket start: every request
+// of a local day shares one bucket that starts at local midnight, and buckets
+// never overlap. Real zones come from the embedded tzdata, so the test does
+// not depend on the host's zoneinfo.
+func TestBuildKeepsBucketsAlignedAcrossDSTChanges(t *testing.T) {
+	newYork := loadZone(t, "America/New_York")
+	lordHowe := loadZone(t, "Australia/Lord_Howe") // shifts by 30 minutes
+	cases := []struct {
+		name  string
+		zone  *time.Location
+		width time.Duration
+		times []string // local wall-clock times with their UTC offset
+		want  []string // bucket starts, local
+	}{
+		{"spring forward daily", newYork, 24 * time.Hour,
+			[]string{"2026-03-08 00:30 -0500", "2026-03-08 12:00 -0400", "2026-03-08 23:59 -0400"},
+			[]string{"2026-03-08 00:00 -0500"}},
+		{"fall back daily", newYork, 24 * time.Hour,
+			[]string{"2026-11-01 00:30 -0400", "2026-11-01 12:00 -0500"},
+			[]string{"2026-11-01 00:00 -0400"}},
+		{"spring forward 2h", newYork, 2 * time.Hour,
+			[]string{"2026-03-08 01:30 -0500", "2026-03-08 03:15 -0400"},
+			[]string{"2026-03-08 00:00 -0500", "2026-03-08 03:00 -0400"}},
+		// The repeated 01:00 hour stays two separate one-hour buckets.
+		{"fall back hourly", newYork, time.Hour,
+			[]string{"2026-11-01 01:30 -0400", "2026-11-01 01:30 -0500"},
+			[]string{"2026-11-01 01:00 -0400", "2026-11-01 01:00 -0500"}},
+		{"half-hour shift hourly", lordHowe, time.Hour,
+			[]string{"2026-10-04 01:45 +1030", "2026-10-04 02:45 +1100"},
+			[]string{"2026-10-04 01:00 +1030", "2026-10-04 02:30 +1100"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withLocal(t, tc.zone, func() {
+				var entries []traffic.Request
+				for _, clock := range tc.times {
+					local, err := time.ParseInLocation("2006-01-02 15:04 -0700", clock, tc.zone)
+					if err != nil {
+						t.Fatal(err)
+					}
+					entries = append(entries, traffic.Request{Time: local.UTC(), Status: 200})
+				}
+				var got []string
+				for _, bucket := range Build(entries, tc.width) {
+					got = append(got, bucket.Start.In(time.Local).Format("2006-01-02 15:04 -0700"))
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Fatalf("bucket starts = %q, want %q", got, tc.want)
+				}
+			})
+		})
+	}
+}
+
+func loadZone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	zone, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatalf("load %s: %v", name, err)
+	}
+	return zone
 }

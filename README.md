@@ -394,7 +394,7 @@ Findings are sorted by severity (error, warning, info), then subject, with port 
 
 ### Timeline
 
-Requests are grouped into buckets of `--bucket` width, aligned to the local wall clock: each request's instant is shifted by its local UTC offset, truncated with `time.Truncate`, and shifted back, so `--bucket 1h` starts on the local hour even at a +05:30 offset. Buckets are keyed by instant, so equal instants always share a bucket whatever their zone offset. Requests without a timestamp (zero time) are skipped.
+Requests are grouped into buckets of `--bucket` width, aligned to the local wall clock: each request's instant is shifted by its local UTC offset, truncated with `time.Truncate`, and shifted back, so `--bucket 1h` starts on the local hour even at a +05:30 offset. When a daylight-saving change falls between a bucket's start and the request, the start is shifted back by the offset in effect at the start instead, so `--bucket 24h` starts at local midnight on DST days too and buckets never overlap. The repeated hour of a fall-back day stays two separate one-hour buckets. Buckets are keyed by instant, so equal instants always share a bucket whatever their zone offset. Requests without a timestamp (zero time) are skipped.
 
 ---
 
