@@ -414,11 +414,13 @@ Requests are grouped into buckets of `--bucket` width, aligned to the local wall
 
 DevPulse writes these files as UTF-8 without a byte order mark. Session, baseline and configuration readers ignore a leading UTF-8 BOM, so a file re-saved by Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`, `Out-File`) still loads.
 
-Configuration is resolved from the first source that exists:
+Configuration is resolved in this order:
 
-1. `$DEVPULSE_CONFIG`
-2. The nearest `.devpulse/config.json`, searching from the current directory up to the filesystem root (written by `devpulse init`)
-3. `~/.devpulse/config.json`
+1. `$DEVPULSE_CONFIG`, when it is set. It is a hard override and is used even when the file does not exist yet: DevPulse then runs with the defaults, and `devpulse config --target …` creates the file there.
+2. Otherwise, the nearest `.devpulse/config.json` that exists, searching from the current directory up to the filesystem root (written by `devpulse init`)
+3. Otherwise, `~/.devpulse/config.json`
+
+`devpulse config` saves to the file it read, which is `~/.devpulse/config.json` when neither of the first two applies.
 
 | Key | Default | Notes |
 | --- | --- | --- |
