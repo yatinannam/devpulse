@@ -433,7 +433,7 @@ devpulse config --listen 127.0.0.1:9090
 devpulse config --watch-interval 5s             # 0s, -1s or abc are rejected (exit 2)
 ```
 
-Configuration files saved by versions before the loopback default may still contain `"listen": ":9090"` (all interfaces). Run `devpulse config --listen 127.0.0.1:9090` to update them. A malformed `watch_interval` in an existing file is reported on stderr and replaced by `2s` at runtime. Unknown keys (for example a misspelled `watchInterval`) are ignored with a warning on stderr that names the key and the file.
+Configuration files saved by versions before the loopback default may still contain `"listen": ":9090"` (all interfaces). Run `devpulse config --listen 127.0.0.1:9090` to update them. A malformed `watch_interval` in an existing file is reported on stderr and replaced by `2s` at runtime. Keys match without regard to case, as in Go's `encoding/json`, so `"TARGET"` sets `target`. Unknown keys (for example a misspelled `watchInterval`) are ignored with a warning on stderr that names the key and the file. When `devpulse config` rewrites the file, it keeps them after the known keys, so an older binary does not erase settings that a newer one wrote.
 
 ---
 
