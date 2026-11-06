@@ -91,11 +91,8 @@ func (r *Recorder) Snapshot() []Request {
 }
 
 func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error) {
-	u, err := url.Parse(target)
+	u, err := parseTarget(target)
 	if err != nil {
-		return nil, fmt.Errorf("invalid target: %w", err)
-	}
-	if err := checkTarget(target, u); err != nil {
 		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(u)
@@ -147,6 +144,25 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		http.Error(w, "devpulse proxy error", 502)
 	}
 	return proxy, nil
+}
+
+// CheckTarget reports whether target is an upstream NewProxy accepts,
+// returning the same error NewProxy would. It lets `devpulse config`
+// refuse a bad --target before saving it.
+func CheckTarget(target string) error {
+	_, err := parseTarget(target)
+	return err
+}
+
+func parseTarget(target string) (*url.URL, error) {
+	u, err := url.Parse(target)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target: %w", err)
+	}
+	if err := checkTarget(target, u); err != nil {
+		return nil, err
+	}
+	return u, nil
 }
 
 // checkTarget rejects targets the proxy cannot forward to. url.Parse accepts

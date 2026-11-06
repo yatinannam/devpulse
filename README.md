@@ -148,7 +148,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | --- | --- | --- |
 | `report` | `--out` (`devpulse-report.md`), `--format` (`markdown`), `--title`, `--top` (`5`), `--from` | Shareable Markdown or JSON report. `--out -` writes to stdout |
 | `export` | `--out` (`-`), `--method`, `--status`, `--path-prefix`, `--since`, `--until`, `--limit`, `--from` | Filtered CSV of individual requests. See the [CSV export guide](docs/traffic-csv-export.md) |
-| `config` | `--target`, `--listen`, `--watch-interval` | Print, or update and print, the active configuration |
+| `config` | `--target`, `--listen`, `--watch-interval` | Print, or update and print, the active configuration. Each value is checked with the rules `traffic` and `watch` apply, and an invalid one is refused (exit 2) without saving anything |
 
 ### Exit status
 
@@ -156,7 +156,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, a `traffic --listen` that is not `host:port`, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, a `traffic --listen` that is not `host:port`, a `config --target`, `--listen` or `--watch-interval` that `traffic` or `watch` would refuse, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
 
 ---
 
@@ -427,7 +427,7 @@ Configuration is resolved in this order:
 | Key | Default | Notes |
 | --- | --- | --- |
 | `listen` | `127.0.0.1:9090` | Loopback only. Use `0.0.0.0:9090` to expose the proxy deliberately |
-| `target` | `http://localhost:3000` | Must include the scheme |
+| `target` | `http://localhost:3000` | An `http://` or `https://` URL with a host; a port, if given, from 1 to 65535 |
 | `watch_interval` | `2s` | Positive Go duration such as `500ms` or `5s` |
 
 ```bash

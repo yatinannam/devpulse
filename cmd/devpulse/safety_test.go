@@ -217,3 +217,32 @@ func TestParseWatchInterval(t *testing.T) {
 		t.Errorf("parseWatchInterval(5s) = %v, %v", got, err)
 	}
 }
+
+func TestCheckConfigUpdateRejectsValuesTrafficWouldRefuse(t *testing.T) {
+	// `config --target` and `config --listen` used to save anything, so a
+	// typo was only reported later, when `traffic` refused to start.
+	for _, tc := range []struct{ target, listen, interval string }{
+		{target: "localhost:3000"},
+		{target: "ftp://x"},
+		{target: "http://localhost:99999"},
+		{listen: "abc"},
+		{listen: "9090"},
+		{interval: "0s"},
+	} {
+		if err := checkConfigUpdate(tc.target, tc.listen, tc.interval); err == nil {
+			t.Errorf("checkConfigUpdate(%q, %q, %q) succeeded, want an error", tc.target, tc.listen, tc.interval)
+		}
+	}
+	// Empty values mean "not given" and leave the setting unchanged.
+	for _, tc := range []struct{ target, listen, interval string }{
+		{},
+		{target: "http://localhost:8080"},
+		{listen: "127.0.0.1:9090"},
+		{interval: "5s"},
+		{target: "https://api.local", listen: ":9090", interval: "1s"},
+	} {
+		if err := checkConfigUpdate(tc.target, tc.listen, tc.interval); err != nil {
+			t.Errorf("checkConfigUpdate(%q, %q, %q) = %v, want nil", tc.target, tc.listen, tc.interval, err)
+		}
+	}
+}

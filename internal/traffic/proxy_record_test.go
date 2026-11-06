@@ -157,6 +157,23 @@ func TestNewProxyRejectsUnusableTargets(t *testing.T) {
 	}
 }
 
+func TestCheckTargetMatchesNewProxy(t *testing.T) {
+	// config --target uses CheckTarget, so it must refuse exactly what
+	// NewProxy refuses, with the same message.
+	for _, target := range []string{"localhost:3000", "ftp://x", "http://", "http://localhost:0", "http://localhost:99999", "%zz"} {
+		_, proxyErr := NewProxy(target, NewRecorder(nil))
+		checkErr := CheckTarget(target)
+		if proxyErr == nil || checkErr == nil || proxyErr.Error() != checkErr.Error() {
+			t.Errorf("target %q: CheckTarget = %v, NewProxy = %v; want the same error", target, checkErr, proxyErr)
+		}
+	}
+	for _, target := range []string{"http://localhost:3000", "https://api.local", "http://127.0.0.1:8080/api"} {
+		if err := CheckTarget(target); err != nil {
+			t.Errorf("CheckTarget(%q) = %v, want nil", target, err)
+		}
+	}
+}
+
 func TestProxyRecordsTheClientRequestURI(t *testing.T) {
 	upstreamURI := make(chan string, 1)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

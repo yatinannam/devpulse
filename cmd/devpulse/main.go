@@ -239,12 +239,39 @@ func recentCommand(args []string) {
 	renderRecent(os.Stdout, ui.TermWidth(), *from, len(s.Requests), recent)
 }
 
+// checkConfigUpdate validates the values `devpulse config` was asked to
+// save, with the same rules `traffic` and `watch` apply when they use them,
+// so a typo is refused now instead of breaking the next command. Empty
+// values were not given and are not checked.
+func checkConfigUpdate(target, listen, interval string) error {
+	if target != "" {
+		if err := traffic.CheckTarget(target); err != nil {
+			return err
+		}
+	}
+	if listen != "" {
+		if err := traffic.CheckListen(listen); err != nil {
+			return err
+		}
+	}
+	if interval != "" {
+		if _, err := parseWatchInterval(interval); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func configCommand(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
 	setTarget := fs.String("target", "", "set default upstream")
 	setListen := fs.String("listen", "", "set proxy listen address")
 	setInterval := fs.String("watch-interval", "", "set watch refresh interval")
 	mustParseArgs(fs, args)
+	if err := checkConfigUpdate(*setTarget, *setListen, *setInterval); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse config: %v\n", err)
+		os.Exit(2)
+	}
 
 	c := loadConfig()
 	changed := false
@@ -257,10 +284,6 @@ func configCommand(args []string) {
 		changed = true
 	}
 	if *setInterval != "" {
-		if _, err := parseWatchInterval(*setInterval); err != nil {
-			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-			os.Exit(2)
-		}
 		c.WatchInterval = *setInterval
 		changed = true
 	}
