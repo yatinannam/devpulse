@@ -287,6 +287,53 @@ func renderConfig(w io.Writer, width int, c config.Config, source string, exists
 	})
 }
 
+// renderTrafficStart writes the traffic command's header: where the proxy
+// listens and forwards, and where the session will be saved.
+func renderTrafficStart(w io.Writer, width int, listen, target, session string) {
+	ui.Title(w, width, "traffic", nil)
+	room := width - len("Session") - 2
+	ui.KVList(w, width, 0, []ui.KV{
+		{Key: "Proxy", Value: ui.Plain(proxyURLFor(listen) + " → " + target)},
+		{Key: "Session", Value: ui.Plain(ui.TruncatePath(session, room))},
+	})
+	fmt.Fprintln(w)
+	ui.Wrapped(w, width, 0, ui.Styled("Waiting for HTTP traffic. Press Ctrl+C to save and stop.", ui.Muted))
+	fmt.Fprintln(w)
+}
+
+// trafficLine is one live request while traffic records: time, method,
+// path, colored status and latency, and the upstream it went to. Lines are
+// printed as requests arrive, so columns have fixed widths; the path takes
+// what is left, up to 40 columns, and the upstream is dropped first when
+// the terminal is narrow.
+func trafficLine(width int, r traffic.Request) ui.Line {
+	head := ui.Join(ui.Styled(r.Time.Local().Format("15:04:05"), ui.Muted), ui.Plain(fmt.Sprintf("  %-7s  ", r.Method)))
+	status, latency := ui.Status(r.Status), ui.Latency(r.Latency)
+	numbers := ui.Join(
+		ui.Plain(strings.Repeat(" ", 2+max(0, 3-status.Width()))), status,
+		ui.Plain(strings.Repeat(" ", 2+max(0, 6-latency.Width()))), latency,
+	)
+	upstream := ui.Styled(fmt.Sprintf("  → %s:%d", r.TargetHost, r.TargetPort), ui.Muted)
+	room := width - head.Width() - numbers.Width() - upstream.Width()
+	if room < 12 {
+		upstream = nil
+		room = width - head.Width() - numbers.Width()
+	}
+	room = min(40, room)
+	path := ui.Plain(r.Path).Truncate(room)
+	path = ui.Join(path, ui.Plain(strings.Repeat(" ", room-path.Width())))
+	return ui.Join(head, path, numbers, upstream)
+}
+
+// renderTrafficSaved reports the saved session and any requests the
+// recorder dropped to stay within --max-requests.
+func renderTrafficSaved(w io.Writer, width, saved int, path string, dropped int) {
+	ui.Marked(w, width, ui.LevelOK, ui.Plain(fmt.Sprintf("Saved %s to %s", ui.Count(saved, "request", "requests"), path)))
+	if dropped > 0 {
+		ui.Marked(w, width, ui.LevelWarn, ui.Plain(fmt.Sprintf("%s dropped; raise --max-requests to keep more.", ui.Count(dropped, "older request was", "older requests were"))))
+	}
+}
+
 // latencyFact is a dim label followed by a colored latency: "p95 1.3s".
 func latencyFact(label string, d time.Duration) ui.Line {
 	return ui.Join(ui.Styled(label+" ", ui.Muted), ui.Latency(d))

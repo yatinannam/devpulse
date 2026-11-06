@@ -301,10 +301,9 @@ func trafficCommand(args []string) {
 		os.Exit(2)
 	}
 
+	width := ui.TermWidth()
 	recorder := traffic.NewLimitedRecorder(*maxRequests, func(r traffic.Request) {
-		fmt.Printf("%s  %-6s %-32s %d  %s  → %s:%d\n",
-			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
-			r.Latency.Round(time.Millisecond), r.TargetHost, r.TargetPort)
+		ui.Writeln(os.Stdout, trafficLine(width, r))
 	}, func() {
 		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", *maxRequests)
 	})
@@ -313,11 +312,7 @@ func trafficCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("DEVPULSE TRAFFIC")
-	fmt.Println("────────────────────────────────────────────────")
-	fmt.Printf("Proxy: %s → %s\n", *listen, *target)
-	fmt.Println("Waiting for HTTP traffic... (Ctrl+C to save and stop)")
-	fmt.Println()
+	renderTrafficStart(os.Stdout, width, *listen, *target, sessionPath())
 
 	server, serveErr, err := traffic.Start(traffic.Handler(proxy), *listen)
 	if err != nil {
@@ -337,7 +332,8 @@ func trafficCommand(args []string) {
 	// if shutdown is held up by a long-lived connection.
 	signal.Stop(sig)
 
-	fmt.Printf("\nStopping proxy: waiting up to %s for in-flight requests (Ctrl+C again to quit without saving)\n", traffic.DefaultShutdownTimeout)
+	fmt.Println()
+	ui.Wrapped(os.Stdout, width, 0, ui.Styled(fmt.Sprintf("Stopping the proxy. Waiting up to %s for in-flight requests; press Ctrl+C again to quit without saving.", traffic.DefaultShutdownTimeout), ui.Muted))
 	if err := traffic.Shutdown(server, traffic.DefaultShutdownTimeout); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 	}
@@ -347,11 +343,7 @@ func trafficCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: could not save session: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Saved %d requests to %s", len(entries), sessionPath())
-	if dropped := recorder.Dropped(); dropped > 0 {
-		fmt.Printf(" (%d older requests were dropped; raise --max-requests to keep more)", dropped)
-	}
-	fmt.Println()
+	renderTrafficSaved(os.Stdout, width, len(entries), sessionPath(), recorder.Dropped())
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
