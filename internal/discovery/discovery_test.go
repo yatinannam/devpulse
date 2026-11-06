@@ -1,6 +1,8 @@
 package discovery
 
 import (
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -96,6 +98,21 @@ func TestProbeWaitsForASlowFirstResponse(t *testing.T) {
 	got := probeEntry(ports.Entry{Port: port}, 250*time.Millisecond)
 	if !got.HTTP || got.Kind != "Node / Next.js" {
 		t.Fatalf("probeEntry() = %+v, want an HTTP service identified as Node / Next.js", got)
+	}
+}
+
+// TestProbeRejectsAnHTTPSServer covers Go TLS servers (Caddy, the Kubernetes
+// API, Traefik), which answer plain HTTP with a 400 instead of closing the
+// connection. Saving http:// for one would make every proxied request fail.
+func TestProbeRejectsAnHTTPSServer(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	server.StartTLS()
+	defer server.Close()
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	if got := probeEntry(ports.Entry{Port: port}, 250*time.Millisecond); got.HTTP || got.URL != "" {
+		t.Fatalf("probeEntry() = %+v, want an HTTPS-only server to be non-HTTP with no URL", got)
 	}
 }
 

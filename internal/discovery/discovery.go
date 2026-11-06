@@ -134,12 +134,23 @@ func probe(port int, timeout time.Duration) (bool, string, string, string) {
 			getResp, err := client.Do(getReq)
 			if err == nil {
 				body, _ := io.ReadAll(io.LimitReader(getResp.Body, 8*1024))
-				kind = identify(getResp.Header, string(body))
 				_ = getResp.Body.Close()
+				if rejectsPlainHTTP(getResp.StatusCode, string(body)) {
+					return false, "", "", ""
+				}
+				kind = identify(getResp.Header, string(body))
 			}
 		}
 	}
 	return true, kind, server, addr
+}
+
+// rejectsPlainHTTP reports the 400 that Go TLS servers (Caddy, the Kubernetes
+// API, Traefik) send to a plain HTTP request. Such a listener speaks HTTPS
+// only, so an http:// URL for it would fail every request.
+func rejectsPlainHTTP(status int, body string) bool {
+	return status == http.StatusBadRequest &&
+		strings.Contains(strings.ToLower(body), "client sent an http request to an https server")
 }
 
 func identify(h http.Header, body string) string {

@@ -317,7 +317,7 @@ Each listener is probed concurrently on the loopback interface:
 
 1. TCP dial to `127.0.0.1:<port>` with a 250 to 300 ms timeout. If that fails, dial `[::1]:<port>`, which catches servers bound only to IPv6 loopback (Vite binds `localhost` there on Node 17+). If both fail, the listener is non-HTTP. Later steps and the service URL (`http://127.0.0.1:3000` or `http://[::1]:5173`) use the address that answered.
 2. `HEAD /`, with redirects not followed.
-3. If the headers do not identify the server, `GET /` with `Accept: text/html,*/*;q=0.8` and the body capped at 8 KiB. Asking for HTML as a browser does makes Spring Boot return its Whitelabel Error Page instead of a JSON error.
+3. If the headers do not identify the server, `GET /` with `Accept: text/html,*/*;q=0.8` and the body capped at 8 KiB. Asking for HTML as a browser does makes Spring Boot return its Whitelabel Error Page instead of a JSON error. A `400` whose body says `Client sent an HTTP request to an HTTPS server`, which Go TLS servers such as Caddy and the Kubernetes API send, marks the listener as non-HTTP, so `init` never saves an `http://` target for an HTTPS-only server.
 
 The `HEAD` and `GET` requests share a 2 s budget, separate from the dial timeout, so a dev server that compiles its first page on request (`next dev`) still counts as HTTP. One probe takes at most about 2.6 s, every listener is probed at once, and probes use no keep-alive connections, so nothing stays open after discovery returns.
 
@@ -537,7 +537,7 @@ Guidelines:
 | Recorder | Keeps the newest `--max-requests` requests (default 10000). Older ones are dropped, with a warning on stderr and a count in the save message |
 | Host header | The client's `Host` header is forwarded unchanged, so a virtual-hosted upstream that routes on `Host` may serve the wrong site |
 | Shutdown | In-flight requests get 5 s to finish. Connections still open after that (for example SSE streams) are force-closed; those requests may be missing from the session or recorded with a partial byte count |
-| Probing | Probes try `127.0.0.1`, then `::1`. Services bound only to a LAN address are listed but not identified as HTTP |
+| Probing | Probes try `127.0.0.1`, then `::1`. Services bound only to a LAN address are listed but not identified as HTTP. Probes never speak TLS, so HTTPS-only services are listed as non-HTTP |
 | CI gating | `doctor` and `anomalies` exit 0 even when they report findings. Parse `--json` output to fail a pipeline |
 | Race tests | `go test -race` needs cgo and a working C toolchain; CI runs it on Linux |
 
