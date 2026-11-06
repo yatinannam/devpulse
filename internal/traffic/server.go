@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -16,6 +17,26 @@ const DefaultShutdownTimeout = 5 * time.Second
 // readHeaderTimeout bounds how long a client may take to send its request
 // headers, so a stalled connection cannot hold a server goroutine forever.
 const readHeaderTimeout = 10 * time.Second
+
+// CheckListen rejects listen addresses that are not host:port with a numeric
+// port. net.Listen treats an empty address as ":0", which binds every
+// interface on a random port, so it is refused here rather than started.
+// The host may be empty (all interfaces) and the port may be 0 (any free
+// port).
+func CheckListen(addr string) error {
+	const example = "127.0.0.1:9090"
+	if addr == "" {
+		return fmt.Errorf("invalid listen address %q: use host:port, for example %s", addr, example)
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return fmt.Errorf("invalid listen address %q: missing port, for example %s", addr, example)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 0 || n > 65535 {
+		return fmt.Errorf("invalid listen address %q: the port must be a number from 0 to 65535", addr)
+	}
+	return nil
+}
 
 // Start listens on addr and serves proxy in the background. The returned
 // channel receives the error if Serve stops for any reason other than

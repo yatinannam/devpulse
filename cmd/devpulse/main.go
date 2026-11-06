@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -306,32 +308,67 @@ func sessionPath() string {
 	return filepath.Join(home, ".devpulse", "session.json")
 }
 
+// trafficArgs are the validated flags of the traffic command.
+type trafficArgs struct {
+	Listen      string
+	Target      string
+	MaxRequests int
+}
+
+// parseTrafficArgs parses the traffic flags, defaulting --listen and
+// --target to the configuration, and reports invalid values as usage errors
+// so trafficCommand exits 2 before it starts anything.
+func parseTrafficArgs(fs *flag.FlagSet, args []string, c config.Config) (trafficArgs, error) {
+	var a trafficArgs
+	fs.StringVar(&a.Listen, "listen", c.Listen, "proxy listen address")
+	fs.StringVar(&a.Target, "target", c.Target, "upstream application")
+	fs.IntVar(&a.MaxRequests, "max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
+	if err := parseArgs(fs, args); err != nil {
+		return a, err
+	}
+	if a.MaxRequests < 1 {
+		return a, fmt.Errorf("--max-requests must be at least 1, got %d", a.MaxRequests)
+	}
+	if err := traffic.CheckListen(a.Listen); err != nil {
+		return a, err
+	}
+	return a, nil
+}
+
+// startTrafficProxy binds the listener, then prints the banner with the
+// address the proxy actually got, so --listen 127.0.0.1:0 shows the real
+// port and a failed bind prints no banner at all.
+func startTrafficProxy(w io.Writer, width int, handler http.Handler, listen, target, session string) (*http.Server, <-chan error, error) {
+	server, serveErr, err := traffic.Start(handler, listen)
+	if err != nil {
+		return nil, nil, err
+	}
+	renderTrafficStart(w, width, server.Addr, target, session)
+	return server, serveErr, nil
+}
+
 func trafficCommand(args []string) {
 	c := loadConfig()
 	fs := flag.NewFlagSet("traffic", flag.ExitOnError)
-	listen := fs.String("listen", c.Listen, "proxy listen address")
-	target := fs.String("target", c.Target, "upstream application")
-	maxRequests := fs.Int("max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
-	mustParseArgs(fs, args)
-	if *maxRequests < 1 {
-		fmt.Fprintf(os.Stderr, "devpulse traffic: --max-requests must be at least 1, got %d\n", *maxRequests)
+	a, err := parseTrafficArgs(fs, args, c)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse traffic: %v\n", err)
 		os.Exit(2)
 	}
 
 	width := ui.TermWidth()
-	recorder := traffic.NewLimitedRecorder(*maxRequests, func(r traffic.Request) {
+	recorder := traffic.NewLimitedRecorder(a.MaxRequests, func(r traffic.Request) {
 		ui.Writeln(os.Stdout, trafficLine(width, r))
 	}, func() {
-		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", *maxRequests)
+		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", a.MaxRequests)
 	})
-	proxy, err := traffic.NewProxy(*target, recorder)
+	proxy, err := traffic.NewProxy(a.Target, recorder)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	renderTrafficStart(os.Stdout, width, *listen, *target, sessionPath())
 
-	server, serveErr, err := traffic.Start(traffic.Handler(proxy), *listen)
+	server, serveErr, err := startTrafficProxy(os.Stdout, width, traffic.Handler(proxy), a.Listen, a.Target, sessionPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)

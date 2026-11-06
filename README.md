@@ -156,7 +156,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, a `traffic --listen` that is not `host:port`, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
 
 ---
 
@@ -286,6 +286,8 @@ devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
 
 `--target` must be an `http://` or `https://` URL with a host and, if it names a port, a port from 1 to 65535. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+
+`--listen` must be `host:port` with a numeric port, for example `127.0.0.1:9090`. An empty value or a missing port is a usage error (exit `2`); an empty value would otherwise bind every interface on a random port. The host may be empty (`:9090`, all interfaces) and the port may be `0` (any free port). The `Proxy` line of the banner is printed once the listener is bound and shows the address it actually got, so `--listen 127.0.0.1:0` prints the real port.
 
 A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
 

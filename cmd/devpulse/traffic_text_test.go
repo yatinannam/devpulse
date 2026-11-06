@@ -1,10 +1,15 @@
 package main
 
 import (
+	"flag"
+	"io"
+	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/yatinannam/devpulse/internal/config"
 	"github.com/yatinannam/devpulse/internal/traffic"
 	"github.com/yatinannam/devpulse/internal/ui"
 )
@@ -21,6 +26,64 @@ func TestRenderTrafficStart(t *testing.T) {
 		"\n"
 	if got := b.String(); got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestParseTrafficArgsRejectsBadListenAddressesAsUsageErrors(t *testing.T) {
+	// An empty --listen made net.Listen bind every interface on a random
+	// port, and the banner printed "http://" without saying which port.
+	for _, args := range [][]string{
+		{"--listen", ""},
+		{"--listen", "9090"},
+		{"--listen", "abc"},
+		{"--listen", "127.0.0.1:"},
+		{"--max-requests", "0"},
+	} {
+		fs := flag.NewFlagSet("traffic", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		if _, err := parseTrafficArgs(fs, args, config.Default()); err == nil {
+			t.Errorf("parseTrafficArgs(%q) succeeded, want a usage error", args)
+		}
+	}
+	fs := flag.NewFlagSet("traffic", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	a, err := parseTrafficArgs(fs, []string{"--listen", "127.0.0.1:0"}, config.Default())
+	if err != nil || a.Listen != "127.0.0.1:0" || a.Target != "http://localhost:3000" || a.MaxRequests != traffic.DefaultMaxRequests {
+		t.Fatalf("parseTrafficArgs = %+v, %v", a, err)
+	}
+}
+
+func TestStartTrafficProxyShowsTheBoundAddress(t *testing.T) {
+	// The banner used to echo --listen, so --listen 127.0.0.1:0 printed
+	// http://127.0.0.1:0 instead of the port the proxy actually got.
+	plainOutput(t)
+	var b strings.Builder
+	server, _, err := startTrafficProxy(&b, 80, http.NotFoundHandler(), "127.0.0.1:0", "http://localhost:3000", "/tmp/session.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer traffic.Shutdown(server, 0)
+	_, port, _ := net.SplitHostPort(server.Addr)
+	if port == "0" || port == "" {
+		t.Fatalf("server.Addr = %q, want a real port", server.Addr)
+	}
+	if want := "Proxy    http://127.0.0.1:" + port + " → http://localhost:3000\n"; !strings.Contains(b.String(), want) {
+		t.Fatalf("banner\n%s\nwant it to contain %q", b.String(), want)
+	}
+}
+
+func TestStartTrafficProxyPrintsNoBannerWhenTheBindFails(t *testing.T) {
+	first, _, err := traffic.Start(http.NotFoundHandler(), "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer traffic.Shutdown(first, 0)
+	var b strings.Builder
+	if _, _, err := startTrafficProxy(&b, 80, http.NotFoundHandler(), first.Addr, "http://localhost:3000", "/tmp/session.json"); err == nil {
+		t.Fatal("startTrafficProxy succeeded on a port that is in use")
+	}
+	if b.Len() != 0 {
+		t.Fatalf("printed a banner for a proxy that never started: %q", b.String())
 	}
 }
 
