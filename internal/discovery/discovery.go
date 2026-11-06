@@ -159,7 +159,7 @@ func identify(h http.Header, body string) string {
 	}
 	server := strings.ToLower(h.Get("Server"))
 	x := strings.ToLower(body)
-	if strings.Contains(server, "uvicorn") || strings.Contains(x, "fastapi") {
+	if strings.Contains(server, "uvicorn") {
 		return "Python / FastAPI"
 	}
 	if strings.Contains(server, "gunicorn") {
@@ -170,6 +170,11 @@ func identify(h http.Header, body string) string {
 	}
 	if strings.Contains(server, "vite") || strings.Contains(x, "@vite") || strings.Contains(x, "vite/client") {
 		return "Node / Vite"
+	}
+	// The word alone is weaker evidence than a bundler marker: a Vite or
+	// Next.js frontend often names the FastAPI backend it talks to.
+	if strings.Contains(x, "fastapi") {
+		return "Python / FastAPI"
 	}
 	// Stock Express sends X-Powered-By: Express and no Server header.
 	if strings.Contains(server, "express") || strings.Contains(strings.ToLower(h.Get("X-Powered-By")), "express") {

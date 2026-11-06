@@ -323,13 +323,16 @@ The `HEAD` and `GET` requests share a 2 s budget, separate from the dial timeout
 
 Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it with `204` and `X-DevPulse-Proxy: 1`, so discovery from `status`, `watch`, `init`, `baseline` and `diff` is never forwarded to your app or recorded in the session.
 
+Signals are checked from the top of the table down, and the first match wins.
+
 | Signal | Classified as |
 | --- | --- |
 | `X-DevPulse-Proxy` header | `DevPulse proxy` (never chosen by `init`) |
-| `Server: uvicorn`, or body mentions `fastapi` | Python / FastAPI |
+| `Server: uvicorn` | Python / FastAPI |
 | `Server: gunicorn` | Python / Gunicorn |
 | `Server` contains `next`, or body has `__NEXT_DATA__` / `_next/static` | Node / Next.js |
 | `Server` contains `vite`, or body has `@vite` / `vite/client` | Node / Vite |
+| body mentions `fastapi`. It comes after the Next.js and Vite markers because a frontend often names the FastAPI backend it calls | Python / FastAPI |
 | `Server` or `X-Powered-By` contains `express` (stock Express sends only `X-Powered-By: Express`) | Node / Express |
 | `Server` contains `jetty` / `tomcat`, an `X-Application-Context` header (Spring Boot 1.x), or body has `Whitelabel Error Page`. The word `spring` alone is not enough | Java / Spring |
 | `Server` contains `caddy` / `nginx` | Caddy / Nginx |

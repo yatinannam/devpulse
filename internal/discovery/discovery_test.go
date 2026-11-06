@@ -25,6 +25,10 @@ func TestIdentify(t *testing.T) {
 		extra map[string]string
 	}{
 		{"fastapi", "uvicorn", "", "Python / FastAPI", nil},
+		{"fastapi body", "", `{"title":"FastAPI"}`, "Python / FastAPI", nil},
+		// A frontend that names its FastAPI backend is still the frontend.
+		{"vite page mentions fastapi", "", `<script type="module" src="/@vite/client"></script><title>Full Stack FastAPI Project</title>`, "Node / Vite", nil},
+		{"next page mentions fastapi", "", `<link href="/_next/static/css/app.css"><h1>Built with FastAPI</h1>`, "Node / Next.js", nil},
 		{"next", "", "_next/static/chunks", "Node / Next.js", nil},
 		{"vite", "", "<script src=\"/@vite/client\">", "Node / Vite", nil},
 		{"spring", "tomcat", "", "Java / Spring", nil},
