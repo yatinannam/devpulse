@@ -114,6 +114,12 @@ func baselineCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
+	// A --to that names the session would replace the captured traffic
+	// with the snapshot.
+	if err := ensureDistinctOutput(*from, *to); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse baseline: --to: %v\n", err)
+		os.Exit(2)
+	}
 	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)

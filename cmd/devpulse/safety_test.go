@@ -2,14 +2,94 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+// runMain runs main() with args in a child test process, so tests can check
+// paths that end in os.Exit. The session and configuration point at missing
+// files in a temporary directory unless env overrides them (later entries
+// win). It returns stdout, stderr and the exit code.
+func runMain(t *testing.T, env []string, args ...string) (string, string, int) {
+	t.Helper()
+	encoded, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunMainHelper$")
+	cmd.Env = append(os.Environ(),
+		"DEVPULSE_RUN_MAIN="+string(encoded),
+		"DEVPULSE_SESSION="+filepath.Join(tmp, "session.json"),
+		"DEVPULSE_CONFIG="+filepath.Join(tmp, "config.json"),
+	)
+	cmd.Env = append(cmd.Env, env...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	code := 0
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Fatal(err)
+		}
+		code = exit.ExitCode()
+	}
+	return stdout.String(), stderr.String(), code
+}
+
+// TestRunMainHelper is the child side of runMain. It does nothing in a
+// normal test run.
+func TestRunMainHelper(t *testing.T) {
+	encoded := os.Getenv("DEVPULSE_RUN_MAIN")
+	if encoded == "" {
+		return
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(encoded), &args); err != nil {
+		os.Exit(99)
+	}
+	os.Args = append([]string{"devpulse"}, args...)
+	main()
+	os.Exit(0)
+}
+
+func TestBaselineRefusesToOverwriteItsSession(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	original, err := os.ReadFile(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]string{"same path": sessionPath}
+	for name, alias := range sessionAliases(t, sessionPath) {
+		targets[name] = alias
+	}
+	for name, target := range targets {
+		t.Run(name, func(t *testing.T) {
+			_, stderr, code := runMain(t, nil, "baseline", "--from", sessionPath, "--to", target)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2; stderr: %s", code, stderr)
+			}
+			if !strings.Contains(stderr, "must differ from the source session") {
+				t.Fatalf("stderr should explain the refusal: %q", stderr)
+			}
+			after, err := os.ReadFile(sessionPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, original) {
+				t.Fatal("baseline overwrote its source session")
+			}
+		})
+	}
+}
 
 // sessionAliases returns paths that name the same file as sessionPath but
 // differ as strings, so a plain path comparison cannot detect them.

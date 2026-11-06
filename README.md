@@ -156,7 +156,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
 
 ---
 
@@ -291,7 +291,7 @@ A capture keeps the newest `--max-requests` requests (default `10000`; values be
 
 Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). Clients get 10 seconds to send their request headers.
 
-`report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. See [docs/markdown-reports.md](docs/markdown-reports.md).
+`report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. `baseline` makes the same check on `--to` and exits `2` instead of replacing the session with the snapshot. See [docs/markdown-reports.md](docs/markdown-reports.md).
 
 ---
 
@@ -466,7 +466,7 @@ CGO_ENABLED=0 go build -trimpath -o devpulse ./cmd/devpulse
 - **Loopback by default.** The proxy binds `127.0.0.1`, so neither the proxied app nor the recorder is reachable from the network unless you pass a wider `--listen`.
 - **No egress.** DevPulse connects only to `127.0.0.1` (probes) and your configured `--target`.
 - **Private artifacts.** Sessions, reports, exports and baselines are written with mode `0600` through a temporary file and an atomic rename, so a crash never leaves a half-written file in place. Configuration files are also written with mode `0600`.
-- **Source protection.** `report` and `export` refuse to overwrite their input session (file-identity check).
+- **Source protection.** `report`, `export` and `baseline` refuse to overwrite their input session (file-identity check).
 - **Sensitive data.** Sessions store request paths, including query strings, and may contain tokens or identifiers. Treat them as local diagnostics and review them before sharing. Nothing is redacted automatically.
 
 ### Supply chain
