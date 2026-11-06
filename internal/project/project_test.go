@@ -74,6 +74,28 @@ func TestDetectRecognisesEveryConfigExtension(t *testing.T) {
 	}
 }
 
+func TestDetectMatchesEveryRequirementsFile(t *testing.T) {
+	// The README promises requirements*.txt, not just two spellings. The
+	// bracketed directory checks that the directory name is not read as
+	// part of the pattern.
+	for _, marker := range []string{"requirements.txt", "requirements-dev.txt", "requirements-prod.txt", "requirements_test.txt", "app [v2]/requirements-dev.txt"} {
+		t.Run(marker, func(t *testing.T) {
+			root := tree(t, ".git/", marker)
+			dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(marker)))
+			got, err := Detect(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Kind != "Python" || got.Root != dir {
+				t.Fatalf("Detect() = %+v, want a Python project rooted at %s", got, dir)
+			}
+		})
+	}
+	if got, _ := Detect(tree(t, ".git/", "requirements.in")); got.Kind != "Unknown project" {
+		t.Fatalf("requirements.in: kind=%q, want Unknown project", got.Kind)
+	}
+}
+
 func TestDetectSearchesUpwardForProjectRoot(t *testing.T) {
 	root := tree(t, ".git/", "package.json", "vite.config.mts", "src/components/")
 	got, err := Detect(filepath.Join(root, "src", "components"))
