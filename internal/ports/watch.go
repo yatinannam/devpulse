@@ -17,24 +17,23 @@ func SnapshotOf(entries []Entry) Snapshot {
 	return s
 }
 
-// Watch polls the listener table every interval and reports opened and closed
-// ports. A failed poll is passed to onError and skipped, so one transient
-// netstat/ss/lsof failure does not end the watch. Only the first poll is fatal.
-func Watch(interval time.Duration, onChange func(added, removed []Entry), onError func(error)) error {
+// Watch polls the listener table every interval and reports ports opened and
+// closed since initial, the listing the caller already showed. Starting from
+// that listing instead of polling again means nothing that changes between
+// the two is missed. A failed poll is passed to onError and skipped, so one
+// transient netstat/ss/lsof failure does not end the watch.
+func Watch(initial []Entry, interval time.Duration, onChange func(added, removed []Entry), onError func(error)) error {
 	if interval <= 0 {
 		return fmt.Errorf("watch interval must be positive, got %s", interval)
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	return watchWith(ticker.C, List, onChange, onError)
+	watchWith(initial, ticker.C, List, onChange, onError)
+	return nil
 }
 
-func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange func(added, removed []Entry), onError func(error)) error {
-	previousEntries, err := list()
-	if err != nil {
-		return err
-	}
-	previous := SnapshotOf(previousEntries)
+func watchWith(initial []Entry, ticks <-chan time.Time, list func() ([]Entry, error), onChange func(added, removed []Entry), onError func(error)) {
+	previous := SnapshotOf(initial)
 
 	for range ticks {
 		currentEntries, err := list()
@@ -72,7 +71,6 @@ func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange fu
 		}
 		previous = current
 	}
-	return nil
 }
 
 // tolerateNoMatches treats exit status 1 as an empty result. lsof exits 1

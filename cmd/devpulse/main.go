@@ -280,7 +280,7 @@ func portsCommand(args []string) {
 		fmt.Println()
 		ui.Writeln(os.Stdout, ui.Styled("Watching for port changes. Press Ctrl+C to stop.", ui.Muted))
 		onError := func(err error) { fmt.Fprintf(os.Stderr, "devpulse: %v (retrying)\n", err) }
-		if err := ports.Watch(time.Second, ports.PrintChange, onError); err != nil {
+		if err := ports.Watch(entries, time.Second, ports.PrintChange, onError); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
