@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 
 const Version = 1
 const FileName = "baseline.json"
+
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 type Snapshot struct {
 	Version   int       `json:"version"`
@@ -110,7 +113,9 @@ func Load(path string) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("read baseline: %w", err)
 	}
 	var snapshot Snapshot
-	if err := json.Unmarshal(data, &snapshot); err != nil {
+	// A file re-saved by Windows PowerShell 5.1 starts with a UTF-8 byte
+	// order mark, which encoding/json rejects; sessions already ignore it.
+	if err := json.Unmarshal(bytes.TrimPrefix(data, utf8BOM), &snapshot); err != nil {
 		return Snapshot{}, fmt.Errorf("decode baseline: %w", err)
 	}
 	if snapshot.Version != Version {
