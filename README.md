@@ -232,6 +232,7 @@ Output fits the terminal width: `COLUMNS` when it is set, otherwise the detected
 - Paths in `init`, `config` and `traffic` keep their end (`…my-app/.devpulse/config.json`), so the file name stays visible.
 - Prose that must not lose words wraps instead: `doctor` details and advice, and the messages in `validate`, `diff` and `anomalies`.
 - Width is counted in runes, with glyphs and box characters as one column. East Asian wide characters in paths can push a line past the edge.
+- Control characters in captured data are drawn as `�`. This covers C0 controls (including tab and newline), DEL and C1 controls in a session path, a method or a process name. A session file therefore cannot clear the screen, retitle the terminal or split a table row. `--json`, `export` and `report` output keep the original text.
 - `status` lists HTTP services in full, sorted by port, with up to five endpoints each, worst first. Other TCP listeners are folded into a compact grid.
 
 `watch` clears the screen between refreshes only when stdout is a terminal. When it is piped, frames are separated by a blank line. If the configuration cannot be loaded, `watch` warns on stderr and continues with the defaults.
