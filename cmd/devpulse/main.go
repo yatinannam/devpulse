@@ -161,12 +161,21 @@ func diffCommand(args []string) {
 }
 
 func loadConfig() config.Config {
-	c, err := config.Load()
+	c, warnings, err := config.LoadWithWarnings()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
+	printConfigWarnings(warnings)
 	return c
+}
+
+// printConfigWarnings reports non-fatal configuration problems, such as an
+// unknown key, on stderr.
+func printConfigWarnings(warnings []string) {
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "devpulse: config %s: %s\n", config.Path(), w)
+	}
 }
 
 func recentRequests(entries []traffic.Request, n int) []traffic.Request {
@@ -373,11 +382,12 @@ func statusCommand(args []string) {
 func watchCommand(args []string) {
 	// A broken config must not stop watch, or even `watch --help`: warn
 	// and fall back to the defaults.
-	c, err := config.Load()
+	c, warnings, err := config.LoadWithWarnings()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v; using default settings\n", err)
 		c = config.Default()
 	}
+	printConfigWarnings(warnings)
 	defaultInterval := 2 * time.Second
 	if d, err := parseWatchInterval(c.WatchInterval); err == nil {
 		defaultInterval = d

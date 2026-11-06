@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 const projectConfigDir = ".devpulse"
@@ -59,18 +60,38 @@ func findProjectConfig(dir string) (string, bool) {
 }
 
 func Load() (Config, error) {
+	c, _, err := LoadWithWarnings()
+	return c, err
+}
+
+// LoadWithWarnings is Load plus a sorted list of non-fatal problems, such as
+// unknown keys, that the caller should show the user. Unknown keys are
+// ignored rather than rejected so older binaries can read newer files.
+func LoadWithWarnings() (Config, []string, error) {
 	c := Default()
 	data, err := os.ReadFile(Path())
 	if os.IsNotExist(err) {
-		return c, nil
+		return c, nil, nil
 	}
 	if err != nil {
-		return c, fmt.Errorf("read config: %w", err)
+		return c, nil, fmt.Errorf("read config: %w", err)
 	}
 	if err := json.Unmarshal(data, &c); err != nil {
-		return c, fmt.Errorf("decode config: %w", err)
+		return c, nil, fmt.Errorf("decode config: %w", err)
 	}
-	return c, nil
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return c, nil, nil
+	}
+	known := map[string]bool{"listen": true, "target": true, "watch_interval": true}
+	var warnings []string
+	for key := range raw {
+		if !known[key] {
+			warnings = append(warnings, fmt.Sprintf("unknown key %q ignored", key))
+		}
+	}
+	sort.Strings(warnings)
+	return c, warnings, nil
 }
 
 func Save(c Config) error {
