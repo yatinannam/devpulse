@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -76,6 +77,9 @@ func LoadWithWarnings() (Config, []string, error) {
 	if err != nil {
 		return c, nil, fmt.Errorf("read config: %w", err)
 	}
+	// Windows PowerShell 5.1 starts re-saved files with a UTF-8 byte order
+	// mark, which encoding/json rejects.
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, nil, fmt.Errorf("decode config: %w", err)
 	}

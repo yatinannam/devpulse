@@ -156,3 +156,20 @@ func TestLoadWithWarningsIsQuietForAValidFile(t *testing.T) {
 		t.Fatalf("LoadWithWarnings() = %q, %v; want no warnings", warnings, err)
 	}
 }
+
+func TestLoadIgnoresUTF8ByteOrderMark(t *testing.T) {
+	// Windows PowerShell 5.1 (Set-Content -Encoding UTF8) writes a BOM; every
+	// command loads config, so rejecting it broke the whole CLI.
+	p := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("DEVPULSE_CONFIG", p)
+	if err := os.WriteFile(p, []byte("\xEF\xBB\xBF"+`{"target":"http://localhost:5000"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, warnings, err := LoadWithWarnings()
+	if err != nil {
+		t.Fatalf("LoadWithWarnings with BOM: %v", err)
+	}
+	if c.Target != "http://localhost:5000" || len(warnings) != 0 {
+		t.Fatalf("got target %q, warnings %q; want http://localhost:5000 and none", c.Target, warnings)
+	}
+}

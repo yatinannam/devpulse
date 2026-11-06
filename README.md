@@ -406,7 +406,7 @@ Requests are grouped into buckets of `--bucket` width, aligned to the local wall
 | Configuration | see precedence below | `DEVPULSE_CONFIG` |
 | Baseline | `./.devpulse/baseline.json` | `--to` / `--from` / `--baseline` |
 
-DevPulse writes these files as UTF-8 without a byte order mark. Session and baseline readers ignore a leading UTF-8 BOM, so a file re-saved by Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`, `Out-File`) still loads.
+DevPulse writes these files as UTF-8 without a byte order mark. Session, baseline and configuration readers ignore a leading UTF-8 BOM, so a file re-saved by Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`, `Out-File`) still loads.
 
 Configuration is resolved from the first source that exists:
 
