@@ -48,7 +48,14 @@ func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange fu
 
 		var added, removed []Entry
 		for port, entry := range current {
-			if _, ok := previous[port]; !ok {
+			old, ok := previous[port]
+			if !ok {
+				added = append(added, entry)
+			} else if old.PID != entry.PID {
+				// A restart within one tick (nodemon, air) keeps the port
+				// but changes the PID: report the old process as closed and
+				// the new one as opened.
+				removed = append(removed, old)
 				added = append(added, entry)
 			}
 		}
@@ -79,19 +86,7 @@ func tolerateNoMatches(out []byte, err error) ([]byte, error) {
 	return out, err
 }
 
+// PrintChange writes opened and closed ports to stdout; see RenderChange.
 func PrintChange(added, removed []Entry) {
-	for _, e := range added {
-		process := e.Process
-		if process == "" {
-			process = "-"
-		}
-		fmt.Printf("%s  + %-6d %-20s %-8s ● %s\n", time.Now().Format("15:04:05"), e.Port, process, e.PID, e.State)
-	}
-	for _, e := range removed {
-		process := e.Process
-		if process == "" {
-			process = "-"
-		}
-		fmt.Printf("%s  - %-6d %-20s %-8s ○ CLOSED\n", time.Now().Format("15:04:05"), e.Port, process, e.PID)
-	}
+	printChange(added, removed)
 }

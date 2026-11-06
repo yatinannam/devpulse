@@ -2,6 +2,7 @@ package status
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/metrics"
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 type Summary struct {
@@ -49,7 +51,7 @@ type Endpoint struct {
 	Average       time.Duration
 }
 
-func normalizeEndpointPath(raw string) string {
+func NormalizeEndpointPath(raw string) string {
 	path := raw
 	if i := strings.IndexAny(path, "?#"); i >= 0 {
 		path = path[:i]
@@ -102,7 +104,7 @@ func isUUID(s string) bool {
 func Endpoints(entries []traffic.Request) []Endpoint {
 	m := map[string]*Endpoint{}
 	for _, e := range entries {
-		path := normalizeEndpointPath(e.Path)
+		path := NormalizeEndpointPath(e.Path)
 		key := e.Method + " " + path
 		x := m[key]
 		if x == nil {
@@ -127,7 +129,15 @@ func Endpoints(entries []traffic.Request) []Endpoint {
 		if out[i].Average != out[j].Average {
 			return out[i].Average > out[j].Average
 		}
-		return out[i].Count > out[j].Count
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		// Map iteration order is random; break ties so the order (and
+		// baseline.json) is the same on every run.
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Method < out[j].Method
 	})
 	return out
 }
@@ -145,7 +155,14 @@ func GroupByService(services []discovery.Service, entries []traffic.Request) []S
 		groups[e.TargetPort] = append(groups[e.TargetPort], e)
 	}
 	out := make([]ServiceTraffic, 0, len(services))
+	// Requests are keyed by port, so a port listed twice (several PIDs on
+	// one socket) would count every request once per copy. Keep the first.
+	seen := map[int]bool{}
 	for _, s := range services {
+		if seen[s.Port] {
+			continue
+		}
+		seen[s.Port] = true
 		es := groups[s.Port]
 		summary := Build(es)
 		out = append(out, ServiceTraffic{Service: s, Requests: Endpoints(es), Total: summary.Total, Errors: summary.Errors, Slow: summary.Slow, Average: summary.Average})
@@ -166,32 +183,119 @@ func Health(g ServiceTraffic) string {
 	return "healthy"
 }
 
-func PrintServices(groups []ServiceTraffic) {
-	fmt.Println("SERVICES")
-	for _, g := range groups {
-		kind := g.Service.Kind
-		if kind == "" {
-			kind = "TCP service"
+// PrintServices writes the discovered services sorted by port: each HTTP
+// service with its health, traffic and busiest endpoints, then every other
+// TCP listener in a compact grid. No line is wider than width.
+func PrintServices(w io.Writer, groups []ServiceTraffic, width int) {
+	// Endpoints arrive worst first (errors, then latency), so the cap keeps
+	// the rows that explain a service's health.
+	const endpointLimit = 5
+	sorted := append([]ServiceTraffic(nil), groups...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Service.Port < sorted[j].Service.Port })
+
+	var httpGroups []ServiceTraffic
+	var others []ui.Line
+	portWidth, kindWidth, ownerWidth, methodWidth := 0, 0, 0, 0
+	for _, g := range sorted {
+		port := fmt.Sprintf(":%d", g.Service.Port)
+		if !g.Service.HTTP {
+			item := ui.Plain(port)
+			if g.Service.Process != "" {
+				item = ui.Join(item, ui.Styled(" "+g.Service.Process, ui.Muted))
+			}
+			others = append(others, item)
+			continue
 		}
-		fmt.Printf("%s :%-5d %-18s %3d req  %2d err  %s avg  [%s]\n", healthMarker(Health(g)), g.Service.Port, kind, g.Total, g.Errors, g.Average.Round(time.Millisecond), Health(g))
-		for _, e := range g.Requests {
-			if e.Errors == 0 && e.Average < 500*time.Millisecond {
+		if g.Service.Kind == "" {
+			g.Service.Kind = discovery.KindHTTPService
+		}
+		httpGroups = append(httpGroups, g)
+		portWidth = max(portWidth, len(port))
+		kindWidth = max(kindWidth, len([]rune(g.Service.Kind)))
+		ownerWidth = max(ownerWidth, len([]rune(strings.TrimSpace(g.Service.Process+" "+g.Service.PID))))
+		for i, e := range g.Requests {
+			if i < endpointLimit {
+				methodWidth = max(methodWidth, len(e.Method))
+			}
+		}
+	}
+
+	ui.Heading(w, "HTTP services", "")
+	if len(httpGroups) == 0 {
+		ui.Wrapped(w, width, 2, ui.Plain("No HTTP services found. Start your app, then run devpulse status again."))
+	} else {
+		// The first column holds service names and endpoint paths. Paths
+		// are capped near the service rows' width, so one long path does
+		// not push every number to the far edge of a wide terminal.
+		serviceWidth := 1 + 1 + portWidth + 2 + kindWidth + 2 + ownerWidth
+		table := ui.NewTable(
+			ui.Column{Flex: true, Max: max(serviceWidth, 40)},
+			ui.Column{Align: ui.AlignRight},
+			ui.Column{Align: ui.AlignRight},
+			ui.Column{Align: ui.AlignRight},
+			ui.Column{},
+		)
+		table.Indent = 2
+		// Endpoint rows pad their numbers by the width of " req", " err"
+		// and " avg", so they line up under the service row's numbers.
+		const unit = "    "
+		for _, g := range httpGroups {
+			owner := strings.TrimSpace(g.Service.Process + " " + g.Service.PID)
+			left := ui.Join(healthMarker(Health(g)),
+				ui.Plain(fmt.Sprintf(" %-*s  %-*s  ", portWidth, fmt.Sprintf(":%d", g.Service.Port), kindWidth, g.Service.Kind)),
+				ui.Styled(owner, ui.Muted))
+			if g.Total == 0 {
+				table.Row(left, ui.Styled("0 req", ui.Muted))
 				continue
 			}
-			fmt.Printf("  ! %-6s %-28s %3d×  %s avg  (%d errors)\n", e.Method, e.Path, e.Count, e.Average.Round(time.Millisecond), e.Errors)
+			errors := ui.Styled("0 err", ui.Muted)
+			if g.Errors > 0 {
+				errors = ui.Styled(fmt.Sprintf("%d err", g.Errors), ui.Error)
+			}
+			var slow ui.Line
+			if g.Slow > 0 {
+				slow = ui.Styled(fmt.Sprintf("%d slow", g.Slow), ui.Warn)
+			}
+			table.Row(left, ui.Plain(fmt.Sprintf("%d req", g.Total)), errors, ui.Join(ui.Latency(g.Average), ui.Plain(" avg")), slow)
+
+			for i, e := range g.Requests {
+				if i == endpointLimit {
+					table.Row(ui.Join(ui.Plain("    "), ui.Styled(fmt.Sprintf("+ %d more endpoints", len(g.Requests)-endpointLimit), ui.Muted)))
+					break
+				}
+				path := ui.Join(ui.Plain("    "), ui.Styled(fmt.Sprintf("%-*s", methodWidth, e.Method), ui.Muted), ui.Plain(" "+e.Path))
+				errors := ui.Styled("0", ui.Muted)
+				if e.Errors > 0 {
+					errors = ui.Styled(fmt.Sprint(e.Errors), ui.Error)
+				}
+				var tag ui.Line
+				if e.Average >= ui.Slow {
+					tag = ui.Styled("slow", ui.LatencyStyle(e.Average))
+				}
+				table.Row(path, ui.Plain(fmt.Sprintf("%d%s", e.Count, unit)), ui.Join(errors, ui.Plain(unit)), ui.Join(ui.Latency(e.Average), ui.Plain(unit)), tag)
+			}
 		}
+		table.Render(w, width)
+	}
+
+	if len(others) > 0 {
+		fmt.Fprintln(w)
+		ui.Heading(w, "Other listeners", fmt.Sprintf("(%d)", len(others)))
+		ui.Grid(w, width, 2, others)
 	}
 }
 
-func healthMarker(h string) string {
+// healthMarker returns the glyph for a Health value: ● healthy, ▲ warning,
+// ✖ error, ○ a running non-HTTP listener.
+func healthMarker(h string) ui.Line {
 	switch h {
 	case "healthy":
-		return "●"
+		return ui.LevelOK.Glyph()
 	case "warning":
-		return "●"
+		return ui.LevelWarn.Glyph()
 	case "error":
-		return "●"
+		return ui.LevelError.Glyph()
 	default:
-		return "○"
+		return ui.LevelIdle.Glyph()
 	}
 }

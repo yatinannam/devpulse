@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Tests only need to read the repository; never inherit a write-all token.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
@@ -19,8 +23,15 @@ jobs:
         with:
           go-version: "1.27.3"
           cache: true
-      - name: Format Go sources
-        run: gofmt -w .
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted. Run: gofmt -w ."
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Test
         run: go test ./...
       - name: Vet

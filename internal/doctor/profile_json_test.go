@@ -10,7 +10,7 @@ import (
 
 func TestFindingsExposeStableJSONSchema(t *testing.T) {
 	got := AnalyzeWithProfile([]traffic.Request{{
-		Time: time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC),
+		Time:   time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC),
 		Method: "GET", Path: "/api", Status: 503, Latency: time.Second,
 	}}, ProfileDefault)
 	if len(got) == 0 {

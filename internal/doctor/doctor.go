@@ -2,25 +2,28 @@ package doctor
 
 import (
 	"fmt"
+	"io"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 type Profile string
 
 const (
-	ProfileDefault   Profile = "default"
-	ProfileStrict    Profile = "strict"
+	ProfileDefault    Profile = "default"
+	ProfileStrict     Profile = "strict"
 	ProfilePermissive Profile = "permissive"
 )
 
 type Thresholds struct {
-	SlowRequest time.Duration
-	ErrorStatus int
+	SlowRequest          time.Duration
+	ErrorStatus          int
 	MinDuplicateRequests int
-	DuplicateWindow time.Duration
+	DuplicateWindow      time.Duration
 }
 
 func ThresholdsFor(profile Profile) (Thresholds, error) {
@@ -82,8 +85,8 @@ func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
 		groups[k] = append(groups[k], e)
 	}
 	type duplicate struct {
-		k key
-		count int
+		k           key
+		count       int
 		first, last time.Time
 	}
 	var duplicates []duplicate
@@ -125,15 +128,49 @@ func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
 	return findings
 }
 
-func Print(findings []Finding) {
-	fmt.Println("DEVPULSE DOCTOR")
-	fmt.Println("------------------------------------------------")
+// Print writes one block per finding: the level glyph and title, then the
+// detail and the advice indented and wrapped to width. A count of errors and
+// warnings closes the list. requests is the session size, for the all-clear
+// line.
+func Print(w io.Writer, findings []Finding, requests, width int) {
 	if len(findings) == 0 {
-		fmt.Println("No obvious HTTP issues detected.")
+		ui.Marked(w, width, ui.LevelOK, ui.Plain(fmt.Sprintf("No issues found in %s.", ui.Count(requests, "request", "requests"))))
 		return
 	}
-	for _, f := range findings {
-		fmt.Printf("%s  %s - %s\n", f.Level, f.Title, f.Detail)
-		fmt.Printf("       %s\n", f.Advice)
+	errors, warnings, other := 0, 0, 0
+	for i, f := range findings {
+		level := ui.LevelIdle
+		switch strings.ToUpper(f.Level) {
+		case "ERROR":
+			level = ui.LevelError
+			errors++
+		case "WARN", "WARNING":
+			level = ui.LevelWarn
+			warnings++
+		default:
+			other++
+		}
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		ui.Writeln(w, ui.Join(level.Glyph(), ui.Plain(" "), ui.Styled(f.Title, ui.Bold)))
+		ui.Wrapped(w, width, 2, ui.Plain(f.Detail))
+		ui.Wrapped(w, width, 2, ui.Styled(f.Advice, ui.Muted))
 	}
+	var counts []ui.Line
+	if errors > 0 {
+		counts = append(counts, ui.Styled(ui.Count(errors, "error", "errors"), ui.Error))
+	}
+	if warnings > 0 {
+		counts = append(counts, ui.Styled(ui.Count(warnings, "warning", "warnings"), ui.Warn))
+	}
+	if other > 0 {
+		counts = append(counts, ui.Styled(ui.Count(other, "note", "notes"), ui.Muted))
+	}
+	summary := counts[0]
+	for _, c := range counts[1:] {
+		summary = ui.Join(summary, ui.Plain(", "), c)
+	}
+	fmt.Fprintln(w)
+	ui.Writeln(w, summary)
 }

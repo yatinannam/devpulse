@@ -1,0 +1,5 @@
+# Go sources are always LF, even in Windows checkouts with core.autocrlf, so
+# gofmt (and the CI format check) sees the same bytes on every platform.
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf

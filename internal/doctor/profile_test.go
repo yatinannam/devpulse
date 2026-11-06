@@ -9,9 +9,9 @@ import (
 
 func TestThresholdsForProfiles(t *testing.T) {
 	tests := []struct {
-		profile Profile
-		slow time.Duration
-		status int
+		profile       Profile
+		slow          time.Duration
+		status        int
 		minDuplicates int
 	}{
 		{ProfileDefault, 500 * time.Millisecond, 400, 3},
@@ -20,7 +20,9 @@ func TestThresholdsForProfiles(t *testing.T) {
 	}
 	for _, test := range tests {
 		got, err := ThresholdsFor(test.profile)
-		if err != nil { t.Fatalf("ThresholdsFor(%q): %v", test.profile, err) }
+		if err != nil {
+			t.Fatalf("ThresholdsFor(%q): %v", test.profile, err)
+		}
 		if got.SlowRequest != test.slow || got.ErrorStatus != test.status || got.MinDuplicateRequests != test.minDuplicates {
 			t.Errorf("ThresholdsFor(%q) = %+v", test.profile, got)
 		}

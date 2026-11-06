@@ -30,6 +30,7 @@ Everything downstream (`status`, `doctor`, `summary`, `timeline`, `baseline`, `d
 - [Quick start](#quick-start)
 - [Architecture](#architecture)
 - [Command reference](#command-reference)
+- [Terminal output](#terminal-output)
 - [APIWatch: traffic capture](#apiwatch-traffic-capture)
 - [PortDoctor: service discovery](#portdoctor-service-discovery)
 - [Analysis engine](#analysis-engine)
@@ -88,7 +89,7 @@ flowchart LR
 
 | Package | Role |
 | --- | --- |
-| `cmd/devpulse` | CLI entry point. Flag parsing, command dispatch, exit codes, atomic file output |
+| `cmd/devpulse` | CLI entry point. Flag parsing, command dispatch, exit codes, atomic file output, and per-command text rendering (`terminal.go`) |
 | `internal/ports` | Per-OS listener enumeration (`ports_linux.go`, `ports_darwin.go`, `ports_windows.go`, `ports_stub.go`), pure parsers, port watch loop |
 | `internal/discovery` | Concurrent HTTP probing of listeners and framework fingerprinting |
 | `internal/project` | Project-type detection from marker files and HTTP target selection |
@@ -104,7 +105,8 @@ flowchart LR
 | `internal/sessioncheck` | Session schema and request-invariant validation |
 | `internal/report` | Markdown and JSON report rendering |
 | `internal/config` | Layered configuration loading and persistence |
-| `internal/output` | Shared JSON encoding |
+| `internal/output` | Shared JSON encoding (no HTML escaping) |
+| `internal/ui` | Terminal rendering: color policy (`NO_COLOR`, `DEVPULSE_COLOR`, TTY and Windows VT detection), width detection, tables with truncation, wrapping, and the pulse sparkline |
 
 ---
 
@@ -116,9 +118,9 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 
 | Command | Flags (default) | Description |
 | --- | --- | --- |
-| `init` | | Detect the project type, probe local HTTP services, and save the best match as `target` in `./.devpulse/config.json` |
+| `init` | | Detect the project type, probe local HTTP services, and save the best match as `target` in `.devpulse/config.json` at the project root (the nearest directory with a project marker, searching upward and stopping at the repository root) |
 | `ports` | `--watch` (`false`) | List listening TCP ports with PID and process. `--watch` then prints `+`/`-` events every second |
-| `traffic` | `--listen` (config), `--target` (config) | Run the recording proxy. `SIGINT`/`SIGTERM` saves the session and exits |
+| `traffic` | `--listen` (config), `--target` (config), `--max-requests` (`10000`) | Run the recording proxy. `SIGINT`/`SIGTERM` drains in-flight requests (5 s deadline), saves the session and exits. A second signal force-quits without saving |
 | `status` | `--from` (session) | Discovered services joined with captured traffic, per-endpoint stats and health |
 | `watch` | `--interval` (config, `2s`), `--from` (session) | Re-render `status` on an interval |
 
@@ -153,8 +155,86 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | Code | Meaning |
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
-| `1` | Runtime failure (unreadable session, I/O error, discovery failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until`, `--profile`, `-n` or interval |
+| `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
+
+---
+
+## Terminal output
+
+Text output is built to show what is wrong at a glance and stay quiet when everything is fine. Every command starts with a `devpulse <command>` title line; context such as the session file and request count sits right-aligned on the same line, or on the next line when it does not fit. Rendering lives in `internal/ui` and uses only the standard library. `--json` output, stderr messages and exit codes do not depend on any of it.
+
+```text
+devpulse status                                            demo.json, 4 requests
+
+HTTP services
+  ✖ :3000  Node / Next.js  node 46552   4 req  1 err  556ms avg  2 slow
+      GET /api/orders/:id               2      1      1.06s      slow
+      GET /api/users                    2      0       52ms
+  ● :8790  HTTP service    python 1234  0 req
+
+Other listeners (2)
+  :22 sshd  :445 System
+
+Traffic   4 requests   1 error (25.0%)   avg 556ms   p50 52ms   p95 1.3s
+          p99 1.3s   2 slow
+```
+
+### Color
+
+Color uses the 16 base ANSI colors only, so your terminal theme decides the exact shades. The first matching rule wins:
+
+| Condition | Color |
+| --- | --- |
+| `DEVPULSE_COLOR=always` | On, even when output is piped |
+| `DEVPULSE_COLOR=never` | Off |
+| `NO_COLOR` is set, to any value | Off |
+| `TERM=dumb` | Off |
+| stdout is not a terminal (pipe, file, CI log) | Off |
+| Windows console that refuses virtual-terminal processing | Off. DevPulse enables it with `SetConsoleMode` |
+| Otherwise | On |
+
+| Token | ANSI | Used for |
+| --- | --- | --- |
+| ok | green (32) | Healthy services, 2xx statuses, `●`, opened ports (`+`) |
+| warn | yellow (33) | 4xx statuses, latency of 500 ms or more, `▲` |
+| error | red (31) | 5xx statuses, latency of 1 s or more, `✖`, closed ports (`-`), error counts |
+| muted | bright black (90) | Table headers, labels, title context, idle listeners, advice |
+| accent | magenta (35) | Only the word `devpulse` in title lines and the pulse sparkline |
+| bold | | Titles and key numbers |
+
+3xx statuses and latency under 500 ms use the default foreground.
+
+### Glyphs
+
+Every glyph sits next to a word, and the shapes differ, so output still reads without color.
+
+| Glyph | Meaning |
+| --- | --- |
+| `●` | OK: a healthy service, a valid session, no findings, a new service or endpoint in `diff` |
+| `▲` | Warning: slow requests, a duplicate burst, a removed or replaced service or endpoint |
+| `✖` | Error: HTTP errors, an invalid session, an error-severity anomaly |
+| `○` | Idle or informational: a non-HTTP listener, an `info` anomaly, changed numbers in `diff` |
+
+### The pulse
+
+The only decorative element is the pulse, drawn with `▁▂▃▄▅▆▇█` in the accent color:
+
+- `summary` draws latency per request in capture order. A long session is resampled so each cell shows the slowest request in its slice.
+- `timeline` draws a bar per bucket, scaled to the busiest bucket, with the error share in red.
+- `watch` draws how many requests each refresh added, over the last 30 refreshes, in the title line.
+
+### Width
+
+Output fits the terminal width: `COLUMNS` when it is set, otherwise the detected width (`GetConsoleScreenBufferInfo` on Windows, `TIOCGWINSZ` on Linux and macOS), otherwise 100. The result is clamped to 60–160 columns, and no line is wider.
+
+- Tables size their columns to the content. Numbers are right-aligned. The flexible column, such as a path or a process name, gives up width first and is cut with `…`.
+- Paths in `init`, `config` and `traffic` keep their end (`…my-app/.devpulse/config.json`), so the file name stays visible.
+- Prose that must not lose words wraps instead: `doctor` details and advice, and the messages in `validate`, `diff` and `anomalies`.
+- Width is counted in runes, with glyphs and box characters as one column. East Asian wide characters in paths can push a line past the edge.
+- `status` lists HTTP services in full, sorted by port, with up to five endpoints each, worst first. Other TCP listeners are folded into a compact grid.
+
+`watch` clears the screen between refreshes only when stdout is a terminal. When it is piped, frames are separated by a blank line. If the configuration cannot be loaded, `watch` warns on stderr and continues with the defaults.
 
 ---
 
@@ -164,18 +244,23 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
   client ──────► 127.0.0.1:9090 ──────► target (default http://localhost:3000)
                  │
                  │  traffic.Handler
-                 │    stamps start time in the request context
+                 │    stores per-request state (start time, client URI, record-once guard)
                  │    answers X-DevPulse-Probe itself (never forwarded)
                  │
                  │  httputil.ReverseProxy
-                 │    ModifyResponse ─► record status, latency, bytes
-                 │    ErrorHandler   ─► record synthetic 502
+                 │    ModifyResponse ─► wrap the body in a byte counter
+                 │    body EOF/close ─► record status, latency, bytes (once)
+                 │    ErrorHandler   ─► record 502, or 499 if the client cancelled (once)
                  ▼
-            Recorder (mutex-guarded, keeps the newest 1000 requests)
+            Recorder (mutex-guarded, keeps the newest --max-requests, default 10000)
+                 │    counts the older requests it drops, warns once on stderr
                  │
                  │  SIGINT / SIGTERM
+                 │    stop accepting, wait up to 5s for in-flight requests, then close
+                 │    snapshot after shutdown, so in-flight requests are kept
+                 │    a second Ctrl+C quits at once, without saving
                  ▼
-            session.json (temp file + rename, mode 0600)
+            session.json (temp file + fsync + rename, mode 0600; exit 1 if the save fails)
 ```
 
 Each captured request becomes one record:
@@ -184,20 +269,26 @@ Each captured request becomes one record:
 | --- | --- | --- |
 | `time` | RFC 3339 timestamp | Proxy receive time |
 | `method` | string | Request method |
-| `path` | string | Upstream request URI, including the query string |
-| `status` | int | Upstream status, or `502` if the upstream could not be reached |
-| `latency` | int (ns) | Receive time until upstream response headers |
-| `bytes` | int | Upstream `Content-Length`, `-1` when unknown (for example chunked) |
+| `path` | string | Client request URI, including the query string, before any `--target` path prefix |
+| `status` | int | Upstream status; `502` if the upstream could not be reached, `499` if the client cancelled first |
+| `latency` | int (ns) | Receive time until the response body finished streaming |
+| `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
 | `targetHost`, `targetPort` | string, int | Parsed from `--target` |
 
-Sessions are versioned (`"version": 1`); readers reject unknown versions. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
+Sessions are versioned (`"version": 1`); readers reject unknown versions and ignore a leading UTF-8 byte order mark, such as the one Windows PowerShell 5.1 adds when it re-saves a file. The full schema is in [docs/session-format.md](docs/session-format.md) and the validation rules are in [docs/session-validation.md](docs/session-validation.md). Run `devpulse validate` before consuming a session in automation.
 
 ```bash
-devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090
+devpulse traffic --target http://localhost:8080 --listen 127.0.0.1:9090 --max-requests 50000
 devpulse validate --from ./artifacts/session.json --json
 devpulse report --from ./artifacts/session.json --out ./artifacts/traffic.md
 devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 ```
+
+`--target` must be an `http://` or `https://` URL with a host. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
+
+A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
+
+Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). Clients get 10 seconds to send their request headers.
 
 `report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. See [docs/markdown-reports.md](docs/markdown-reports.md).
 
@@ -209,22 +300,24 @@ devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 
 | OS | Command | Parsing notes |
 | --- | --- | --- |
-| Linux | `ss -ltnp` | Process name and PID from the `users:(("name",pid=N,...))` column |
-| macOS | `lsof -nP -iTCP -sTCP:LISTEN -F pcn` | Field-mode output. Exit status 1 (no matches) is treated as an empty table |
+| Linux | `ss -ltnp` | Process name and PID from the `users:(("name",pid=N,...))` column. IPv4 and IPv6 rows for the same port and PID are merged |
+| macOS | `lsof -nP -iTCP -sTCP:LISTEN -F pcn` | Field-mode output. Exit status 1 (no matches) is treated as an empty table. TCP4 and TCP6 descriptors for the same port and PID are merged |
 | Windows | `netstat -ano`, `tasklist /FO CSV /NH` | Reads both the TCP and TCPv6 tables. Listeners are matched by their wildcard foreign address (`0.0.0.0:0` / `[::]:0`), not the localized `LISTENING` text. IPv4 and IPv6 rows for the same port and PID are merged |
 | Other | | `ports_stub.go` returns an unsupported-platform error |
 
-The netstat, tasklist, ss and lsof parsers are pure functions with fixture tests that run on every CI platform.
+On every OS, a dual-stack server (for example `0.0.0.0:22` plus `[::]:22`) is listed and probed once. Two different processes on the same port stay separate.
 
-`ports --watch` diffs consecutive snapshots keyed by port. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
+The netstat, tasklist, ss and lsof parsers are pure functions in untagged files, with fixture tests that run on every CI platform.
+
+`ports --watch` diffs consecutive snapshots keyed by port. A new PID on a port that stayed open, such as a restart by nodemon or air between two polls, is reported as the old process closing and the new one opening. A failed poll is printed with `(retrying)` and skipped, so only the first poll is fatal. Changes within one poll are printed in port order.
 
 ### HTTP probing and fingerprinting
 
-Each listener is probed concurrently against `127.0.0.1:<port>`:
+Each listener is probed concurrently on the loopback interface:
 
-1. TCP dial with a 250 to 300 ms timeout. Failure means a non-HTTP listener.
+1. TCP dial to `127.0.0.1:<port>` with a 250 to 300 ms timeout. If that fails, dial `[::1]:<port>`, which catches servers bound only to IPv6 loopback (Vite binds `localhost` there on Node 17+). If both fail, the listener is non-HTTP. Later steps and the service URL (`http://127.0.0.1:3000` or `http://[::1]:5173`) use the address that answered.
 2. `HEAD /`, with redirects not followed.
-3. If the headers do not identify the server, `GET /` with the body capped at 8 KiB.
+3. If the headers do not identify the server, `GET /` with `Accept: text/html,*/*;q=0.8` and the body capped at 8 KiB. Asking for HTML as a browser does makes Spring Boot return its Whitelabel Error Page instead of a JSON error.
 
 Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it with `204` and `X-DevPulse-Proxy: 1`, so discovery from `status`, `watch`, `init`, `baseline` and `diff` is never forwarded to your app or recorded in the session.
 
@@ -235,12 +328,21 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 | `Server: gunicorn` | Python / Gunicorn |
 | `Server` contains `next`, or body has `__NEXT_DATA__` / `_next/static` | Node / Next.js |
 | `Server` contains `vite`, or body has `@vite` / `vite/client` | Node / Vite |
-| `Server` contains `express` | Node / Express |
-| `Server` contains `jetty` / `tomcat`, or body mentions `spring` | Java / Spring |
+| `Server` or `X-Powered-By` contains `express` (stock Express sends only `X-Powered-By: Express`) | Node / Express |
+| `Server` contains `jetty` / `tomcat`, an `X-Application-Context` header (Spring Boot 1.x), or body has `Whitelabel Error Page`. The word `spring` alone is not enough | Java / Spring |
 | `Server` contains `caddy` / `nginx` | Caddy / Nginx |
 | anything else that answers HTTP | HTTP service |
 
-`init` detects the project type from marker files (`next.config.*`, `vite.config.{js,ts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It prefers the conventional port for that type (Next.js 3000, Vite 5173, Python 8000, Go/Java 8080). It then falls back to the only HTTP service, then to the first of 3000, 5173, 8000, 8080, 8081 and 9000.
+`status` joins captured requests to services by target port. Each port is shown once, even when several PIDs share it, so no request is counted twice. Endpoints are ordered by errors, average latency and request count, then by path and method, so `status` output and `baseline.json` are identical between runs over the same session.
+
+`init` detects the project type from marker files (`next.config.{js,mjs,ts,cjs}`, `vite.config.{js,ts,mjs,mts,cjs,cts}`, `go.mod`, `pyproject.toml` / `requirements*.txt`, `pom.xml` / `build.gradle*`, `package.json`). It searches upward from the current directory for the nearest directory with a marker. The search stops at the repository root (the directory containing `.git`, which may be a file in worktrees and submodules) or at the filesystem root. That directory is the project root, and `init` writes `.devpulse/config.json` there, so running it from `src/` configures the whole project. With no marker, `init` reports `Unknown project` and writes to the current directory.
+
+`init` then picks the target from the discovered HTTP services. The first rule that matches wins:
+
+1. The conventional port for the project type: Next.js 3000, Vite 5173, Python 8000, Go/Java 8080.
+2. The only HTTP service.
+3. The first of 3000, 5173, 8000, 8080, 8081 and 9000 that is listening.
+4. A service with an identified framework before a generic `HTTP service` (often an OS service such as HTTP.sys on Windows or AirTunes on macOS), then the lowest port.
 
 ---
 
@@ -248,7 +350,7 @@ Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it w
 
 All analysis is deterministic for a given session and never modifies it.
 
-**Endpoint normalization** (`status`, `baseline`, `diff`, `anomalies`) strips the query string and fragment, then replaces numeric and UUID path segments with `:id`. For example, `/users/42?tab=1` becomes `/users/:id`.
+**Endpoint normalization** (`status`, `baseline`, `diff`, `anomalies`, and the `report` endpoint table) strips the query string and fragment, then replaces numeric and UUID path segments with `:id`. For example, `/users/42?tab=1` becomes `/users/:id`.
 
 **Percentiles** use the nearest-rank method on a sorted copy: `p = sorted[ceil(q·n) − 1]`.
 
@@ -264,18 +366,35 @@ All analysis is deterministic for a given session and never modifies it.
 
 Duplicate detection groups requests by exact method and raw path, sorts each group by time, and slides the profile window across it. A finding fires when any single window contains at least the minimum. This catches sustained request loops and a burst followed by a late straggler; the finding reports the densest burst. Details are in [docs/diagnostic-profiles.md](docs/diagnostic-profiles.md).
 
+### Diff kinds
+
+`diff` compares the baseline with the current environment. Mean latencies are rounded to the nearest millisecond before they are compared and printed. Changes are sorted by kind, then subject, with port subjects in numeric order.
+
+| Kind | Subject | Emitted when |
+| --- | --- | --- |
+| `endpoint-added` | `METHOD /path` | Endpoint seen now but absent from the baseline |
+| `endpoint-changed` | `METHOD /path` | Request count, error count or mean latency differs |
+| `endpoint-removed` | `METHOD /path` | Endpoint in the baseline but not seen now |
+| `service-added` | `:port` | Port listening now but absent from the baseline |
+| `service-changed` | `:port` | Same port, different service kind, or a different process name when both snapshots recorded one |
+| `service-removed` | `:port` | Port in the baseline but no longer listening |
+| `traffic-changed` | `traffic` | Total requests, errors or mean latency differs |
+
 ### Anomaly rules
 
 | Kind | Severity | Condition |
 | --- | --- | --- |
 | `service-added` | info | Port listening now but absent from the baseline |
+| `service-changed` | info | Same port, different service kind, or a different process name when both snapshots recorded one (as in `diff`) |
 | `service-removed` | warning | Port in the baseline but no longer listening |
-| `error-rate` | error | Current error rate ≥ 10 %, ≥ 2× the baseline rate, and ≥ 3 errors |
-| `latency-regression` | warning | Endpoint mean latency ≥ 2× the baseline with ≥ 3 requests |
+| `error-rate` | error | Current error rate ≥ 10 %, ≥ 2× the baseline rate, and ≥ 3 errors. A baseline with no requests counts as 0 % |
+| `latency-regression` | warning | Endpoint mean latency ≥ 2× the baseline with ≥ 3 requests. Latencies print to about three significant digits, for example `900µs` or `12.3ms` |
+
+Findings are sorted by severity (error, warning, info), then subject, with port subjects in numeric order.
 
 ### Timeline
 
-Requests are grouped into buckets of `--bucket` width, aligned with `time.Truncate` (absolute time, UTC-aligned) and keyed by instant, so equal instants always share a bucket whatever their zone offset.
+Requests are grouped into buckets of `--bucket` width, aligned to the local wall clock: each request's instant is shifted by its local UTC offset, truncated with `time.Truncate`, and shifted back, so `--bucket 1h` starts on the local hour even at a +05:30 offset. Buckets are keyed by instant, so equal instants always share a bucket whatever their zone offset. Requests without a timestamp (zero time) are skipped.
 
 ---
 
@@ -306,7 +425,7 @@ devpulse config --listen 127.0.0.1:9090
 devpulse config --watch-interval 5s             # 0s, -1s or abc are rejected (exit 2)
 ```
 
-Configuration files saved by versions before the loopback default may still contain `"listen": ":9090"` (all interfaces). Run `devpulse config --listen 127.0.0.1:9090` to update them. A malformed `watch_interval` in an existing file is reported on stderr and replaced by `2s` at runtime.
+Configuration files saved by versions before the loopback default may still contain `"listen": ":9090"` (all interfaces). Run `devpulse config --listen 127.0.0.1:9090` to update them. A malformed `watch_interval` in an existing file is reported on stderr and replaced by `2s` at runtime. Unknown keys (for example a misspelled `watchInterval`) are ignored with a warning on stderr that names the key and the file.
 
 ---
 
@@ -389,6 +508,7 @@ Pushing a `v*.*.*` tag runs `.github/workflows/release.yml`:
 ## Development
 
 ```bash
+gofmt -l .                   # must print nothing; CI fails on unformatted files
 go build ./...
 go vet ./...
 go test ./...
@@ -410,13 +530,12 @@ Guidelines:
 
 | Area | Current behavior |
 | --- | --- |
-| Recorder | Keeps only the newest 1000 requests per capture |
-| Latency | Measured to upstream response headers. Body transfer time is excluded |
-| Bytes | Taken from `Content-Length`. `-1` for chunked or compressed responses of unknown length |
-| Shutdown | Waits for in-flight requests without a deadline. Long-lived streams (SSE) can delay exit |
-| Target | `--target` must include a scheme (`http://`). A bare `host:port` is not rejected yet |
-| JSON | Some empty collections serialize as `null` rather than `[]` |
-| Probing | Probes use `127.0.0.1`. Services bound only to `::1` or a LAN address are listed but not identified as HTTP |
+| Recorder | Keeps the newest `--max-requests` requests (default 10000). Older ones are dropped, with a warning on stderr and a count in the save message |
+| Host header | The client's `Host` header is forwarded unchanged, so a virtual-hosted upstream that routes on `Host` may serve the wrong site |
+| Shutdown | In-flight requests get 5 s to finish. Connections still open after that (for example SSE streams) are force-closed; those requests may be missing from the session or recorded with a partial byte count |
+| Probing | Probes try `127.0.0.1`, then `::1`. Services bound only to a LAN address are listed but not identified as HTTP |
+| CI gating | `doctor` and `anomalies` exit 0 even when they report findings. Parse `--json` output to fail a pipeline |
+| Race tests | `go test -race` needs cgo and a working C toolchain; CI runs it on Linux |
 
 ---
 

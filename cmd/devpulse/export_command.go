@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -25,18 +25,13 @@ type exportOptions struct {
 }
 
 func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Writer) error {
+	// Validate first, so a missing session cannot hide a bad option.
+	if err := validateExportOptions(opts); err != nil {
+		return err
+	}
 	session, err := traffic.LoadSession(sessionPath)
 	if err != nil {
 		return fmt.Errorf("load session: %w", err)
-	}
-	if !opts.Since.IsZero() && !opts.Until.IsZero() && opts.Since.After(opts.Until) {
-		return fmt.Errorf("--since must not be after --until")
-	}
-	if opts.Status != 0 && (opts.Status < 100 || opts.Status > 599) {
-		return fmt.Errorf("--status must be between 100 and 599")
-	}
-	if opts.Limit < 0 {
-		return fmt.Errorf("--limit must be zero or greater")
 	}
 	requests := filterExportRequests(session.Requests, opts)
 	if opts.Limit > 0 && len(requests) > opts.Limit {
@@ -68,7 +63,7 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 		return fmt.Errorf("flush CSV output: %w", err)
 	}
 
-	if outputPath == "" || outputPath == "-" {
+	if isStdoutPath(outputPath) {
 		if _, err := stdout.Write(content.Bytes()); err != nil {
 			return fmt.Errorf("write CSV to stdout: %w", err)
 		}
@@ -95,29 +90,52 @@ func exportCommand(args []string) {
 	untilText := fs.String("until", "", "include requests at or before RFC3339 timestamp")
 	mustParseArgs(fs, args)
 
-	since, err := parseExportTime("--since", *sinceText)
+	// Usage errors exit 2 before the session is loaded.
+	opts, err := buildExportOptions(*method, *statusCode, *pathPrefix, *sinceText, *untilText, *limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(2)
 	}
-	until, err := parseExportTime("--until", *untilText)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-		os.Exit(2)
-	}
-	if *statusCode != 0 && (*statusCode < 100 || *statusCode > 599) {
-		fmt.Fprintln(os.Stderr, "devpulse: --status must be between 100 and 599")
-		os.Exit(2)
-	}
-	if err := runExport(*from, *out, exportOptions{
-		Method: *method, Status: *statusCode, PathPrefix: *pathPrefix, Since: since, Until: until, Limit: *limit,
-	}, os.Stdout); err != nil {
+	if err := runExport(*from, *out, opts, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	if *out != "-" && *out != "" {
+	if !isStdoutPath(*out) {
 		fmt.Printf("CSV exported: %s\n", *out)
 	}
+}
+
+// buildExportOptions turns raw export flag values into validated options. It
+// does not touch the session, so exportCommand reports a usage error (exit 2)
+// even when the session is missing.
+func buildExportOptions(method string, status int, pathPrefix, sinceText, untilText string, limit int) (exportOptions, error) {
+	since, err := parseExportTime("--since", sinceText)
+	if err != nil {
+		return exportOptions{}, err
+	}
+	until, err := parseExportTime("--until", untilText)
+	if err != nil {
+		return exportOptions{}, err
+	}
+	opts := exportOptions{Method: method, Status: status, PathPrefix: pathPrefix, Since: since, Until: until, Limit: limit}
+	if err := validateExportOptions(opts); err != nil {
+		return exportOptions{}, err
+	}
+	return opts, nil
+}
+
+// validateExportOptions rejects option combinations that can never match.
+func validateExportOptions(opts exportOptions) error {
+	if !opts.Since.IsZero() && !opts.Until.IsZero() && opts.Since.After(opts.Until) {
+		return fmt.Errorf("--since must not be after --until")
+	}
+	if opts.Status != 0 && (opts.Status < 100 || opts.Status > 599) {
+		return fmt.Errorf("--status must be between 100 and 599")
+	}
+	if opts.Limit < 0 {
+		return fmt.Errorf("--limit must be zero or greater")
+	}
+	return nil
 }
 
 func parseExportTime(flagName, value string) (time.Time, error) {
@@ -130,7 +148,6 @@ func parseExportTime(flagName, value string) (time.Time, error) {
 	}
 	return parsed, nil
 }
-
 
 // filterExportRequests applies the optional filters without mutating the source session.
 func filterExportRequests(entries []traffic.Request, opts exportOptions) []traffic.Request {
@@ -156,7 +173,6 @@ func filterExportRequests(entries []traffic.Request, opts exportOptions) []traff
 	}
 	return out
 }
-
 
 // writeExportFile replaces a CSV file atomically and keeps its contents private.
 func writeExportFile(outputPath string, data []byte) error {

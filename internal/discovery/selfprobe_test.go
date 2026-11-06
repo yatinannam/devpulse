@@ -36,7 +36,7 @@ func TestProbeIdentifiesDevPulseProxyWithoutRecordingTraffic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	isHTTP, kind, _ := probe(port, 2*time.Second)
+	isHTTP, kind, _, _ := probe(port, 2*time.Second)
 	if !isHTTP || kind != KindDevPulseProxy {
 		t.Fatalf("probe = (%v, %q), want (true, %q)", isHTTP, kind, KindDevPulseProxy)
 	}

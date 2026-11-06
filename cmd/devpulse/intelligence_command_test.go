@@ -27,9 +27,9 @@ func TestSummaryPayloadJSONFields(t *testing.T) {
 func TestTimelinePayloadJSONFields(t *testing.T) {
 	payload := timelinePayload{
 		Session: "session.json",
-		Bucket: time.Minute,
+		Bucket:  time.Minute,
 		Buckets: []timeline.Bucket{{
-			Start: time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC),
+			Start:    time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC),
 			Requests: 2, Errors: 1, Average: 25 * time.Millisecond,
 		}},
 	}
@@ -63,12 +63,12 @@ func TestTimelinePayloadJSONFields(t *testing.T) {
 func TestAnomalyPayloadJSONFields(t *testing.T) {
 	payload := anomalyPayload{
 		Baseline: "baseline.json",
-		Session: "session.json",
+		Session:  "session.json",
 		Findings: []anomaly.Finding{{
 			Severity: anomaly.SeverityWarning,
-			Kind: "latency-regression",
-			Subject: "GET /items/:id",
-			Message: "latency increased",
+			Kind:     "latency-regression",
+			Subject:  "GET /items/:id",
+			Message:  "latency increased",
 		}},
 	}
 	data, err := json.Marshal(payload)

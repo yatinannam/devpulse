@@ -49,10 +49,16 @@ func TestPathPrefersProjectConfig(t *testing.T) {
 
 	got := Path()
 	gotEval, err := filepath.EvalSymlinks(got)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	wantEval, err := filepath.EvalSymlinks(projectConfig)
-	if err != nil { t.Fatal(err) }
-	if gotEval != wantEval { t.Fatalf("path=%q, want %q", gotEval, wantEval) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotEval != wantEval {
+		t.Fatalf("path=%q, want %q", gotEval, wantEval)
+	}
 }
 
 func TestPathFindsProjectConfigFromNestedDirectory(t *testing.T) {
@@ -76,10 +82,16 @@ func TestPathFindsProjectConfigFromNestedDirectory(t *testing.T) {
 
 	got := Path()
 	gotEval, err := filepath.EvalSymlinks(got)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	wantEval, err := filepath.EvalSymlinks(ProjectPath(root))
-	if err != nil { t.Fatal(err) }
-	if gotEval != wantEval { t.Fatalf("path=%q, want %q", gotEval, wantEval) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotEval != wantEval {
+		t.Fatalf("path=%q, want %q", gotEval, wantEval)
+	}
 }
 
 func TestExplicitConfigOverridesProjectConfig(t *testing.T) {
@@ -105,5 +117,42 @@ func TestExplicitConfigOverridesProjectConfig(t *testing.T) {
 
 	if got := Path(); got != override {
 		t.Fatalf("path=%q, want %q (project=%q)", got, override, projectConfig)
+	}
+}
+
+func TestLoadWithWarningsReportsUnknownKeys(t *testing.T) {
+	// A typo such as "watchInterval" (instead of "watch_interval") used to be
+	// ignored silently, leaving the user wondering why the setting had no effect.
+	p := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("DEVPULSE_CONFIG", p)
+	if err := os.WriteFile(p, []byte(`{"listen":"127.0.0.1:9191","watchInterval":"5s","targte":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, warnings, err := LoadWithWarnings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Listen != "127.0.0.1:9191" {
+		t.Fatalf("known keys must still load, listen = %q", c.Listen)
+	}
+	want := []string{`unknown key "targte" ignored`, `unknown key "watchInterval" ignored`}
+	if len(warnings) != len(want) {
+		t.Fatalf("warnings = %q, want %q", warnings, want)
+	}
+	for i := range want {
+		if warnings[i] != want[i] {
+			t.Fatalf("warnings = %q, want %q", warnings, want)
+		}
+	}
+}
+
+func TestLoadWithWarningsIsQuietForAValidFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("DEVPULSE_CONFIG", p)
+	if err := SaveTo(Default(), p); err != nil {
+		t.Fatal(err)
+	}
+	if _, warnings, err := LoadWithWarnings(); err != nil || len(warnings) != 0 {
+		t.Fatalf("LoadWithWarnings() = %q, %v; want no warnings", warnings, err)
 	}
 }

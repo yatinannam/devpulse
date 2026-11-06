@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -39,6 +40,12 @@ func SaveSession(path string, entries []Request) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write session: %w", err)
 	}
+	// Flush to disk before the rename, so a crash or power loss cannot leave
+	// an empty or partial file under the session's name.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush session: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temporary session: %w", err)
 	}
@@ -48,13 +55,28 @@ func SaveSession(path string, entries []Request) error {
 	return nil
 }
 
+// utf8BOM is the byte order mark Windows PowerShell 5.1 writes at the start
+// of UTF-8 files. encoding/json rejects it as an invalid character.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// DecodeSession decodes a session file's contents, ignoring a leading UTF-8
+// byte order mark. It does not check the version, so validators can report
+// an unsupported version as a finding; it returns the JSON error unwrapped.
+func DecodeSession(data []byte) (Session, error) {
+	var s Session
+	if err := json.Unmarshal(bytes.TrimPrefix(data, utf8BOM), &s); err != nil {
+		return Session{}, err
+	}
+	return s, nil
+}
+
 func LoadSession(path string) (Session, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Session{}, fmt.Errorf("read session: %w", err)
 	}
-	var s Session
-	if err := json.Unmarshal(data, &s); err != nil {
+	s, err := DecodeSession(data)
+	if err != nil {
 		return Session{}, fmt.Errorf("decode session: %w", err)
 	}
 	if s.Version != 1 {

@@ -2,6 +2,8 @@ package traffic
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,9 +45,15 @@ func TestLoadSessionAcceptsLegacyCapitalizedKeys(t *testing.T) {
 			"TargetPort": 3000
 		}]
 	}`
-	var session Session
-	if err := json.Unmarshal([]byte(legacy), &session); err != nil {
-		t.Fatalf("decode legacy session: %v", err)
+	// Exercise the real loader, not json.Unmarshal: the test is about what
+	// LoadSession accepts from disk.
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session, err := LoadSession(path)
+	if err != nil {
+		t.Fatalf("load legacy session: %v", err)
 	}
 	if session.Version != 1 || len(session.Requests) != 1 {
 		t.Fatalf("unexpected legacy session: %+v", session)

@@ -1,25 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/baseline"
 	"github.com/yatinannam/devpulse/internal/config"
-	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/diff"
+	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/doctor"
 	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/project"
-	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 var version = "dev"
@@ -89,31 +90,17 @@ func initCommand(args []string) {
 	}
 	target, ok := project.SelectTarget(projectInfo, services)
 	if !ok {
-		fmt.Println("DEVPULSE INIT")
-		fmt.Println("────────────────────────────────────────────────")
-		fmt.Printf("Project: %s\n", projectInfo.Name)
-		fmt.Printf("Detected: %s\n", projectInfo.Kind)
-		fmt.Println()
-		fmt.Println("No local HTTP service matched this project.")
-		fmt.Println("Start the application, then run `devpulse init` again.")
+		renderInit(os.Stdout, ui.TermWidth(), projectInfo, "", "")
 		return
 	}
 
 	c := loadConfig()
 	c.Target = target.URL
-	if err := config.SaveProject(c, "."); err != nil {
+	if err := config.SaveProject(c, projectInfo.Root); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("DEVPULSE INIT")
-	fmt.Println("────────────────────────────────────────────────")
-	fmt.Printf("Project:  %s\n", projectInfo.Name)
-	fmt.Printf("Detected: %s\n", projectInfo.Kind)
-	fmt.Printf("Target:   %s\n", target.URL)
-	fmt.Println()
-	fmt.Println("✓ DevPulse configured for this project")
-	fmt.Println()
-	fmt.Println("Next: devpulse traffic")
+	renderInit(os.Stdout, ui.TermWidth(), projectInfo, target.URL, config.ProjectPath(projectInfo.Root))
 }
 
 func baselineCommand(args []string) {
@@ -170,24 +157,25 @@ func diffCommand(args []string) {
 		}
 		return
 	}
-	fmt.Println("DEVPULSE DIFF")
-	fmt.Println("────────────────────────────────────────────────")
-	if len(changes) == 0 {
-		fmt.Println("No changes detected.")
-		return
-	}
-	for _, change := range changes {
-		fmt.Printf("[%s] %s: %s\n", change.Kind, change.Subject, change.Message)
-	}
+	renderDiff(os.Stdout, ui.TermWidth(), *session, *from, changes)
 }
 
 func loadConfig() config.Config {
-	c, err := config.Load()
+	c, warnings, err := config.LoadWithWarnings()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
+	printConfigWarnings(warnings)
 	return c
+}
+
+// printConfigWarnings reports non-fatal configuration problems, such as an
+// unknown key, on stderr.
+func printConfigWarnings(warnings []string) {
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "devpulse: config %s: %s\n", config.Path(), w)
+	}
 }
 
 func recentRequests(entries []traffic.Request, n int) []traffic.Request {
@@ -238,19 +226,7 @@ func recentCommand(args []string) {
 		}
 		return
 	}
-	fmt.Println("RECENT ACTIVITY")
-	fmt.Println("────────────────────────────────────────────────")
-	for i := len(recent) - 1; i >= 0; i-- {
-		r := recent[i]
-		marker := " "
-		if r.Status >= 400 || r.Latency >= 500*time.Millisecond {
-			marker = "!"
-		}
-		fmt.Printf("%s %s  %-6s %-32s %3d  %s\n", marker,
-			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
-			r.Latency.Round(time.Millisecond))
-	}
-	fmt.Printf("\nShowing %d of %d requests\n", len(recent), len(s.Requests))
+	renderRecent(os.Stdout, ui.TermWidth(), *from, len(s.Requests), recent)
 }
 
 func configCommand(args []string) {
@@ -284,7 +260,9 @@ func configCommand(args []string) {
 			os.Exit(1)
 		}
 	}
-	fmt.Printf("Config: %s\nlisten=%s\ntarget=%s\nwatch_interval=%s\n", config.Path(), c.Listen, c.Target, c.WatchInterval)
+	source := config.Path()
+	_, statErr := os.Stat(source)
+	renderConfig(os.Stdout, ui.TermWidth(), c, source, statErr == nil, changed)
 }
 
 func portsCommand(args []string) {
@@ -299,7 +277,8 @@ func portsCommand(args []string) {
 	}
 	ports.Print(entries)
 	if *watch {
-		fmt.Println("\nWatching for port changes... (Ctrl+C to stop)")
+		fmt.Println()
+		ui.Writeln(os.Stdout, ui.Styled("Watching for port changes. Press Ctrl+C to stop.", ui.Muted))
 		onError := func(err error) { fmt.Fprintf(os.Stderr, "devpulse: %v (retrying)\n", err) }
 		if err := ports.Watch(time.Second, ports.PrintChange, onError); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
@@ -324,40 +303,59 @@ func trafficCommand(args []string) {
 	fs := flag.NewFlagSet("traffic", flag.ExitOnError)
 	listen := fs.String("listen", c.Listen, "proxy listen address")
 	target := fs.String("target", c.Target, "upstream application")
+	maxRequests := fs.Int("max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
 	mustParseArgs(fs, args)
+	if *maxRequests < 1 {
+		fmt.Fprintf(os.Stderr, "devpulse traffic: --max-requests must be at least 1, got %d\n", *maxRequests)
+		os.Exit(2)
+	}
 
-	recorder := traffic.NewRecorder(func(r traffic.Request) {
-		fmt.Printf("%s  %-6s %-32s %d  %s  → %s:%d\n",
-			r.Time.Format("15:04:05"), r.Method, r.Path, r.Status,
-			r.Latency.Round(time.Millisecond), r.TargetHost, r.TargetPort)
+	width := ui.TermWidth()
+	recorder := traffic.NewLimitedRecorder(*maxRequests, func(r traffic.Request) {
+		ui.Writeln(os.Stdout, trafficLine(width, r))
+	}, func() {
+		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", *maxRequests)
 	})
 	proxy, err := traffic.NewProxy(*target, recorder)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("DEVPULSE TRAFFIC")
-	fmt.Println("────────────────────────────────────────────────")
-	fmt.Printf("Proxy: %s → %s\n", *listen, *target)
-	fmt.Println("Waiting for HTTP traffic... (Ctrl+C to save and stop)")
-	fmt.Println()
+	renderTrafficStart(os.Stdout, width, *listen, *target, sessionPath())
 
-	server, err := traffic.Start(traffic.Handler(proxy), *listen)
+	server, serveErr, err := traffic.Start(traffic.Handler(proxy), *listen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
+	exitCode := 0
+	select {
+	case <-sig:
+	case err := <-serveErr:
+		fmt.Fprintf(os.Stderr, "devpulse: proxy stopped: %v\n", err)
+		exitCode = 1
+	}
+	// Restore the default signal handling, so a second Ctrl+C quits at once
+	// if shutdown is held up by a long-lived connection.
+	signal.Stop(sig)
 
+	fmt.Println()
+	ui.Wrapped(os.Stdout, width, 0, ui.Styled(fmt.Sprintf("Stopping the proxy. Waiting up to %s for in-flight requests; press Ctrl+C again to quit without saving.", traffic.DefaultShutdownTimeout), ui.Muted))
+	if err := traffic.Shutdown(server, traffic.DefaultShutdownTimeout); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
+	}
+	// Snapshot only after shutdown, so requests that were in flight are saved.
 	entries := recorder.Snapshot()
 	if err := traffic.SaveSession(sessionPath(), entries); err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: could not save session: %v\n", err)
-	} else {
-		fmt.Printf("\nSaved %d requests to %s\n", len(entries), sessionPath())
+		os.Exit(1)
 	}
-	_ = traffic.Shutdown(server)
+	renderTrafficSaved(os.Stdout, width, len(entries), sessionPath(), recorder.Dropped())
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 }
 
 func statusCommand(args []string) {
@@ -371,38 +369,25 @@ func statusCommand(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("DEVPULSE")
-	fmt.Println("────────────────────────────────────────────────")
-
+	width := ui.TermWidth()
 	s, loadErr := traffic.LoadSession(*from)
-	if loadErr != nil {
-		fmt.Println("LOCAL SERVICES")
-		for _, svc := range services {
-			marker := "○"
-			if svc.HTTP {
-				marker = "●"
-			}
-			kind := svc.Kind
-			if kind == "" {
-				kind = "TCP service"
-			}
-			fmt.Printf("%s :%-5d %-18s PID %-8s\n", marker, svc.Port, kind, svc.PID)
-		}
-		fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n", *from)
-		return
+	var context ui.Line
+	if loadErr == nil {
+		context = sessionContext(*from, len(s.Requests))
 	}
-
-	groups := status.GroupByService(services, s.Requests)
-	status.PrintServices(groups)
-	fmt.Printf("\nSession: %s\n", *from)
-	summary := status.Build(s.Requests)
-	fmt.Printf("Requests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-		summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
-			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
+	ui.Title(os.Stdout, width, "status", context)
+	renderStatusBody(os.Stdout, width, services, s, loadErr, *from)
 }
 
 func watchCommand(args []string) {
-	c := loadConfig()
+	// A broken config must not stop watch, or even `watch --help`: warn
+	// and fall back to the defaults.
+	c, warnings, err := config.LoadWithWarnings()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v; using default settings\n", err)
+		c = config.Default()
+	}
+	printConfigWarnings(warnings)
 	defaultInterval := 2 * time.Second
 	if d, err := parseWatchInterval(c.WatchInterval); err == nil {
 		defaultInterval = d
@@ -422,35 +407,48 @@ func watchCommand(args []string) {
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
 
+	pulse := ratePulse{limit: 30}
+	frames := 0
 	refresh := func() {
 		services, err := discovery.Discover(300 * time.Millisecond)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			return
 		}
-		fmt.Print("\033[2J\033[H")
-		fmt.Println("DEVPULSE WATCH")
-		fmt.Println("────────────────────────────────────────────────")
-
-		s, err := traffic.LoadSession(*from)
-		if err != nil {
-			status.PrintServices(status.GroupByService(services, nil))
-			fmt.Printf("\nNo captured session: %s\n", *from)
-			return
+		s, loadErr := traffic.LoadSession(*from)
+		if loadErr == nil {
+			pulse.observe(len(s.Requests))
+		} else {
+			pulse.observe(0)
 		}
-		status.PrintServices(status.GroupByService(services, s.Requests))
-		summary := status.Build(s.Requests)
-		fmt.Printf("\nRequests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-			summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
-			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
-		fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\n",
-			time.Now().Format("15:04:05"), *interval)
+		// Render the whole frame first so the screen is cleared and
+		// redrawn in one write.
+		var frame bytes.Buffer
+		renderWatchFrame(&frame, ui.TermWidth(), time.Now(), *interval, &pulse, services, s, loadErr, *from)
+		if !ui.ClearScreen() && frames > 0 {
+			fmt.Println()
+		}
+		frames++
+		_, _ = os.Stdout.Write(frame.Bytes())
 	}
 
 	refresh()
 	for range ticker.C {
 		refresh()
 	}
+}
+
+// doctorEnvelope is the stable `doctor --json` output shape documented in
+// docs/diagnostic-profiles.md.
+type doctorEnvelope struct {
+	Session  string           `json:"session"`
+	Profile  doctor.Profile   `json:"profile"`
+	Requests int              `json:"requests"`
+	Findings []doctor.Finding `json:"findings"`
+}
+
+func newDoctorEnvelope(session string, profile doctor.Profile, requests int, findings []doctor.Finding) doctorEnvelope {
+	return doctorEnvelope{Session: session, Profile: profile, Requests: requests, Findings: findings}
 }
 
 func doctorCommand(args []string) {
@@ -472,39 +470,21 @@ func doctorCommand(args []string) {
 	}
 	findings := doctor.AnalyzeWithProfile(s.Requests, profile)
 	if *jsonOutput {
-		if err := output.WriteJSON(os.Stdout, struct { Session string `json:"session"`; Profile doctor.Profile `json:"profile"`; Requests int `json:"requests"`; Findings []doctor.Finding `json:"findings"` }{*from, profile, len(s.Requests), findings}); err != nil {
+		if err := output.WriteJSON(os.Stdout, newDoctorEnvelope(*from, profile, len(s.Requests), findings)); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
-	fmt.Printf("Session: %s | Requests: %d | Profile: %s\n\n", *from, len(s.Requests), profile)
-	doctor.Print(findings)
+	width := ui.TermWidth()
+	ui.Title(os.Stdout, width, "doctor", sessionContext(*from, len(s.Requests), string(profile)+" profile"))
+	if len(s.Requests) == 0 {
+		writeNoTraffic(os.Stdout, width)
+		return
+	}
+	doctor.Print(os.Stdout, findings, len(s.Requests), width)
 }
 
 func printHelp() {
-	fmt.Println("DevPulse — local development observability")
-	fmt.Println()
-	fmt.Println("Usage: devpulse <command>")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  init       Detect the current project and configure DevPulse")
-	fmt.Println("  baseline   Capture the current environment as a baseline")
-	fmt.Println("  diff       Compare the current environment with the baseline")
-	fmt.Println("  summary    Summarize latency, errors, and slowest requests")
-	fmt.Println("  timeline   Group captured traffic into chronological buckets")
-	fmt.Println("  anomalies  Detect regressions against a saved baseline")
-	fmt.Println("  validate   Validate a captured traffic session")
-	fmt.Println("  report     Generate a Markdown traffic report")
-	fmt.Println("  export     Export captured requests as filtered CSV")
-	fmt.Println("  ports      List local listening ports and processes")
-	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
-	fmt.Println("  status     Show services and captured traffic")
-	fmt.Println("  doctor     Analyze a captured session")
-	fmt.Println("  recent     Show the most recent captured requests")
-	fmt.Println("  watch      Continuously refresh service/traffic health")
-	fmt.Println("  config     View or change persistent defaults")
-	fmt.Println("  version    Print the current build version")
-	fmt.Println()
-	fmt.Println("Use 'devpulse <command> --help' for command-specific flags.")
+	renderHelp(os.Stdout, ui.TermWidth())
 }
