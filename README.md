@@ -89,7 +89,7 @@ flowchart LR
 
 | Package | Role |
 | --- | --- |
-| `cmd/devpulse` | CLI entry point. Flag parsing, command dispatch, exit codes, atomic file output |
+| `cmd/devpulse` | CLI entry point. Flag parsing, command dispatch, exit codes, atomic file output, and per-command text rendering (`terminal.go`) |
 | `internal/ports` | Per-OS listener enumeration (`ports_linux.go`, `ports_darwin.go`, `ports_windows.go`, `ports_stub.go`), pure parsers, port watch loop |
 | `internal/discovery` | Concurrent HTTP probing of listeners and framework fingerprinting |
 | `internal/project` | Project-type detection from marker files and HTTP target selection |
@@ -105,7 +105,8 @@ flowchart LR
 | `internal/sessioncheck` | Session schema and request-invariant validation |
 | `internal/report` | Markdown and JSON report rendering |
 | `internal/config` | Layered configuration loading and persistence |
-| `internal/output` | Shared JSON encoding |
+| `internal/output` | Shared JSON encoding (no HTML escaping) |
+| `internal/ui` | Terminal rendering: color policy (`NO_COLOR`, `DEVPULSE_COLOR`, TTY and Windows VT detection), width detection, tables with truncation, wrapping, and the pulse sparkline |
 
 ---
 
