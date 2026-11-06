@@ -82,7 +82,6 @@ func TestRunExportWritesFile(t *testing.T) {
 	}
 }
 
-
 func TestRunExportFiltersHTTPMethodCaseInsensitively(t *testing.T) {
 	sessionPath := writeExportFixture(t)
 	var out bytes.Buffer
@@ -107,7 +106,6 @@ func TestRunExportReturnsHeaderWhenNoRequestsMatch(t *testing.T) {
 	}
 }
 
-
 func TestRunExportFiltersByStatusAndPathPrefix(t *testing.T) {
 	sessionPath := writeExportFixture(t)
 	var out bytes.Buffer
@@ -130,7 +128,6 @@ func TestRunExportRejectsInvalidStatusFilter(t *testing.T) {
 	}
 }
 
-
 func TestRunExportLimitsMatchingRows(t *testing.T) {
 	sessionPath := writeExportFixture(t)
 	var out bytes.Buffer
@@ -149,7 +146,6 @@ func TestRunExportRejectsNegativeLimit(t *testing.T) {
 		t.Fatal("expected negative limit to fail")
 	}
 }
-
 
 func TestRunExportFiltersInclusiveTimeWindow(t *testing.T) {
 	sessionPath := writeExportFixture(t)
@@ -196,12 +192,11 @@ func TestRunExportProtectsInputSessionAndUsesPrivateFilePermissions(t *testing.T
 	}
 }
 
-
 func TestRunExportEscapesQuotedAndMultilineCSVFields(t *testing.T) {
 	sessionPath := filepath.Join(t.TempDir(), "session.json")
 	pathValue := "/api/items/\"quoted\"\nnext-line"
 	entry := traffic.Request{
-		Time: time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC),
+		Time:   time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC),
 		Method: "GET", Path: pathValue, Status: 200, Latency: 2 * time.Millisecond,
 	}
 	if err := traffic.SaveSession(sessionPath, []traffic.Request{entry}); err != nil {
@@ -216,7 +211,6 @@ func TestRunExportEscapesQuotedAndMultilineCSVFields(t *testing.T) {
 		t.Fatalf("CSV did not round-trip quoted/newline path: %#v", records)
 	}
 }
-
 
 func TestParseExportTime(t *testing.T) {
 	t.Run("empty means unset", func(t *testing.T) {

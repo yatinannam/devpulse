@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -149,7 +149,6 @@ func parseExportTime(flagName, value string) (time.Time, error) {
 	return parsed, nil
 }
 
-
 // filterExportRequests applies the optional filters without mutating the source session.
 func filterExportRequests(entries []traffic.Request, opts exportOptions) []traffic.Request {
 	method := strings.ToUpper(strings.TrimSpace(opts.Method))
@@ -174,7 +173,6 @@ func filterExportRequests(entries []traffic.Request, opts exportOptions) []traff
 	}
 	return out
 }
-
 
 // writeExportFile replaces a CSV file atomically and keeps its contents private.
 func writeExportFile(outputPath string, data []byte) error {

@@ -10,10 +10,10 @@ import (
 func TestValidateSessionMetadata(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	tests := []struct {
-		name string
-		session traffic.Session
+		name      string
+		session   traffic.Session
 		wantValid bool
-		wantCode string
+		wantCode  string
 	}{
 		{name: "valid empty session", session: traffic.Session{Version: 1, CreatedAt: now}, wantValid: true},
 		{name: "unsupported version", session: traffic.Session{Version: 2, CreatedAt: now}, wantCode: "unsupported_version"},

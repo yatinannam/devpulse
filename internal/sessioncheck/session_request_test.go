@@ -9,7 +9,7 @@ import (
 
 func validRequest() traffic.Request {
 	return traffic.Request{
-		Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		Time:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		Method: "GET", Path: "/health", Status: 200,
 		Latency: 12 * time.Millisecond, Bytes: 24,
 		TargetHost: "localhost", TargetPort: 8080,
@@ -31,9 +31,13 @@ func TestValidateRequestShape(t *testing.T) {
 	req.Path = "api/users"
 	got = Validate(validSession(req))
 	codes := map[string]bool{}
-	for _, issue := range got.Issues { codes[issue.Code] = true }
+	for _, issue := range got.Issues {
+		codes[issue.Code] = true
+	}
 	for _, code := range []string{"missing_timestamp", "missing_method", "invalid_path"} {
-		if !codes[code] { t.Errorf("missing issue %q in %+v", code, got.Issues) }
+		if !codes[code] {
+			t.Errorf("missing issue %q in %+v", code, got.Issues)
+		}
 	}
 }
 

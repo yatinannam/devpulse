@@ -16,10 +16,10 @@ const Version = 1
 const FileName = "baseline.json"
 
 type Snapshot struct {
-	Version   int           `json:"version"`
-	CreatedAt time.Time     `json:"created_at"`
-	Services  []Service     `json:"services"`
-	Requests  Traffic       `json:"traffic"`
+	Version   int       `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+	Services  []Service `json:"services"`
+	Requests  Traffic   `json:"traffic"`
 }
 
 type Service struct {
@@ -30,10 +30,10 @@ type Service struct {
 }
 
 type Traffic struct {
-	Total    int      `json:"total"`
-	Errors   int      `json:"errors"`
-	Slow     int      `json:"slow"`
-	Average  int64    `json:"average_ns"`
+	Total     int        `json:"total"`
+	Errors    int        `json:"errors"`
+	Slow      int        `json:"slow"`
+	Average   int64      `json:"average_ns"`
 	Endpoints []Endpoint `json:"endpoints"`
 }
 
@@ -51,31 +51,31 @@ func Build(services []discovery.Service, requests []traffic.Request) Snapshot {
 	out := make([]Endpoint, 0, len(endpoints))
 	for _, e := range endpoints {
 		out = append(out, Endpoint{
-			Method: e.Method,
-			Path: e.Path,
-			Count: e.Count,
-			Errors: e.Errors,
+			Method:  e.Method,
+			Path:    e.Path,
+			Count:   e.Count,
+			Errors:  e.Errors,
 			Average: int64(e.Average),
 		})
 	}
 	svcs := make([]Service, 0, len(services))
 	for _, s := range services {
 		svcs = append(svcs, Service{
-			Port: s.Port,
-			Kind: s.Kind,
-			HTTP: s.HTTP,
+			Port:    s.Port,
+			Kind:    s.Kind,
+			HTTP:    s.HTTP,
 			Process: s.Process,
 		})
 	}
 	return Snapshot{
-		Version: Version,
+		Version:   Version,
 		CreatedAt: time.Now(),
-		Services: svcs,
+		Services:  svcs,
 		Requests: Traffic{
-			Total: summary.Total,
-			Errors: summary.Errors,
-			Slow: summary.Slow,
-			Average: int64(summary.Average),
+			Total:     summary.Total,
+			Errors:    summary.Errors,
+			Slow:      summary.Slow,
+			Average:   int64(summary.Average),
 			Endpoints: out,
 		},
 	}

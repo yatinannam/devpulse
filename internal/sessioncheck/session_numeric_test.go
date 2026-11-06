@@ -13,9 +13,13 @@ func TestValidateNumericRequestFields(t *testing.T) {
 	req.TargetHost = ""
 	got := Validate(validSession(req))
 	codes := map[string]bool{}
-	for _, issue := range got.Issues { codes[issue.Code] = true }
+	for _, issue := range got.Issues {
+		codes[issue.Code] = true
+	}
 	for _, code := range []string{"invalid_status", "negative_latency", "invalid_target_port", "missing_target_host"} {
-		if !codes[code] { t.Errorf("missing issue %q in %+v", code, got.Issues) }
+		if !codes[code] {
+			t.Errorf("missing issue %q in %+v", code, got.Issues)
+		}
 	}
 }
 
@@ -32,10 +36,16 @@ func TestValidateIssueOrderAndRequestIndicesAreStable(t *testing.T) {
 	got := Validate(validSession(first, second))
 	seenFirstTimestamp, seenSecondStatus := false, false
 	for _, issue := range got.Issues {
-		if issue.Code == "missing_timestamp" && issue.Request == 1 { seenFirstTimestamp = true }
-		if issue.Code == "invalid_status" && issue.Request == 2 { seenSecondStatus = true }
+		if issue.Code == "missing_timestamp" && issue.Request == 1 {
+			seenFirstTimestamp = true
+		}
+		if issue.Code == "invalid_status" && issue.Request == 2 {
+			seenSecondStatus = true
+		}
 	}
-	if !seenFirstTimestamp || !seenSecondStatus { t.Fatalf("request indices not one-based: %+v", got.Issues) }
+	if !seenFirstTimestamp || !seenSecondStatus {
+		t.Fatalf("request indices not one-based: %+v", got.Issues)
+	}
 
 	// docs/session-validation.md promises session order, then a fixed
 	// field-check order within each request. Reordering the checks in

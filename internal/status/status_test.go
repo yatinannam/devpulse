@@ -27,8 +27,8 @@ func TestNormalizeEndpointPath(t *testing.T) {
 	cases := map[string]string{
 		"/api/users?id=1": "/api/users",
 		"/api/users?id=2": "/api/users",
-		"/api/users/123": "/api/users/:id",
-		"/api/users/456": "/api/users/:id",
+		"/api/users/123":  "/api/users/:id",
+		"/api/users/456":  "/api/users/:id",
 		"/api/items/550e8400-e29b-41d4-a716-446655440000": "/api/items/:id",
 		"/health": "/health",
 	}

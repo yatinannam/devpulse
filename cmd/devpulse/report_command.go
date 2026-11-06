@@ -19,30 +19,59 @@ func runReport(sessionPath, outputPath, title string, top int, stdout io.Writer)
 }
 
 func runReportWithFormat(sessionPath, outputPath, title string, top int, format string, stdout io.Writer) error {
-	if top < 0 { return fmt.Errorf("--top must be zero or greater") }
-	if format != "markdown" && format != "json" { return fmt.Errorf("unsupported report format %q (choose markdown or json)", format) }
+	if top < 0 {
+		return fmt.Errorf("--top must be zero or greater")
+	}
+	if format != "markdown" && format != "json" {
+		return fmt.Errorf("unsupported report format %q (choose markdown or json)", format)
+	}
 	session, err := traffic.LoadSession(sessionPath)
-	if err != nil { return fmt.Errorf("load session: %w", err) }
+	if err != nil {
+		return fmt.Errorf("load session: %w", err)
+	}
 	result := report.Build(session, report.Options{Title: title, SessionPath: sessionPath, Top: top, GeneratedAt: time.Now()})
 	var content strings.Builder
 	if format == "json" {
 		encoder := json.NewEncoder(&content)
 		encoder.SetEscapeHTML(false)
 		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(result); err != nil { return fmt.Errorf("encode JSON report: %w", err) }
-	} else if err := report.Render(&content, result); err != nil { return err }
-	if isStdoutPath(outputPath) { _, err := io.WriteString(stdout, content.String()); return err }
-	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil { return err }
+		if err := encoder.Encode(result); err != nil {
+			return fmt.Errorf("encode JSON report: %w", err)
+		}
+	} else if err := report.Render(&content, result); err != nil {
+		return err
+	}
+	if isStdoutPath(outputPath) {
+		_, err := io.WriteString(stdout, content.String())
+		return err
+	}
+	if err := ensureDistinctOutput(sessionPath, outputPath); err != nil {
+		return err
+	}
 	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil { return fmt.Errorf("create report directory: %w", err) }
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create report directory: %w", err)
+	}
 	tmp, err := os.CreateTemp(dir, ".devpulse-report-*.tmp")
-	if err != nil { return fmt.Errorf("create temporary report: %w", err) }
+	if err != nil {
+		return fmt.Errorf("create temporary report: %w", err)
+	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if err := tmp.Chmod(0600); err != nil { _ = tmp.Close(); return fmt.Errorf("secure temporary report: %w", err) }
-	if _, err := io.WriteString(tmp, content.String()); err != nil { _ = tmp.Close(); return fmt.Errorf("write report: %w", err) }
-	if err := tmp.Close(); err != nil { return fmt.Errorf("close report: %w", err) }
-	if err := os.Rename(tmpName, outputPath); err != nil { return fmt.Errorf("save report: %w", err) }
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure temporary report: %w", err)
+	}
+	if _, err := io.WriteString(tmp, content.String()); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write report: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close report: %w", err)
+	}
+	if err := os.Rename(tmpName, outputPath); err != nil {
+		return fmt.Errorf("save report: %w", err)
+	}
 	return nil
 }
 
@@ -106,5 +135,7 @@ func reportCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	if !isStdoutPath(opts.Out) { fmt.Printf("Report saved: %s\n", opts.Out) }
+	if !isStdoutPath(opts.Out) {
+		fmt.Printf("Report saved: %s\n", opts.Out)
+	}
 }

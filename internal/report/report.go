@@ -11,24 +11,24 @@ import (
 )
 
 type Options struct {
-	Title string
+	Title       string
 	SessionPath string
-	Top int
+	Top         int
 	GeneratedAt time.Time
 }
 
 type StatusCount struct {
 	Status int `json:"status"`
-	Count int `json:"count"`
+	Count  int `json:"count"`
 }
 
 type Endpoint struct {
-	Method string `json:"method"`
-	Path string `json:"path"`
-	Requests int `json:"requests"`
-	Errors int `json:"errors"`
-	ErrorRate float64 `json:"error_rate"`
-	Average time.Duration `json:"average_latency"`
+	Method    string        `json:"method"`
+	Path      string        `json:"path"`
+	Requests  int           `json:"requests"`
+	Errors    int           `json:"errors"`
+	ErrorRate float64       `json:"error_rate"`
+	Average   time.Duration `json:"average_latency"`
 }
 
 // SlowRequest is one entry of slowest_requests. It mirrors traffic.Request
@@ -46,23 +46,27 @@ type SlowRequest struct {
 }
 
 type Report struct {
-	Title string `json:"title"`
-	SessionPath string `json:"session_path"`
-	SessionCreatedAt time.Time `json:"session_created_at"`
-	GeneratedAt time.Time `json:"generated_at"`
-	Summary summary.Report `json:"summary"`
-	StatusCodes []StatusCount `json:"status_codes"`
-	Endpoints []Endpoint `json:"endpoints"`
-	Slowest []SlowRequest `json:"slowest_requests"`
-	Findings []doctor.Finding `json:"findings"`
+	Title            string           `json:"title"`
+	SessionPath      string           `json:"session_path"`
+	SessionCreatedAt time.Time        `json:"session_created_at"`
+	GeneratedAt      time.Time        `json:"generated_at"`
+	Summary          summary.Report   `json:"summary"`
+	StatusCodes      []StatusCount    `json:"status_codes"`
+	Endpoints        []Endpoint       `json:"endpoints"`
+	Slowest          []SlowRequest    `json:"slowest_requests"`
+	Findings         []doctor.Finding `json:"findings"`
 }
 
 // Build creates a report from a saved traffic session.
 func Build(session traffic.Session, opts Options) Report {
 	title := opts.Title
-	if title == "" { title = "DevPulse Traffic Report" }
+	if title == "" {
+		title = "DevPulse Traffic Report"
+	}
 	generated := opts.GeneratedAt
-	if generated.IsZero() { generated = time.Now() }
+	if generated.IsZero() {
+		generated = time.Now()
+	}
 	return Report{
 		Title: title, SessionPath: opts.SessionPath, SessionCreatedAt: session.CreatedAt,
 		GeneratedAt: generated, Summary: summary.Build(session.Requests), Slowest: buildSlowest(session.Requests, max(0, opts.Top)), Findings: doctor.Analyze(session.Requests), StatusCodes: buildStatusCodes(session.Requests), Endpoints: buildEndpoints(session.Requests),
@@ -81,7 +85,7 @@ func buildSlowest(entries []traffic.Request, top int) []SlowRequest {
 	return out
 }
 
-type endpointKey struct { method, path string }
+type endpointKey struct{ method, path string }
 
 func buildEndpoints(entries []traffic.Request) []Endpoint {
 	groups := make(map[endpointKey]*Endpoint)
@@ -97,7 +101,9 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 			groups[key] = endpoint
 		}
 		endpoint.Requests++
-		if entry.Status >= 400 { endpoint.Errors++ }
+		if entry.Status >= 400 {
+			endpoint.Errors++
+		}
 		totals[key] += entry.Latency
 	}
 	out := make([]Endpoint, 0, len(groups))
@@ -107,9 +113,15 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 		out = append(out, *endpoint)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Requests != out[j].Requests { return out[i].Requests > out[j].Requests }
-		if out[i].Errors != out[j].Errors { return out[i].Errors > out[j].Errors }
-		if out[i].Path != out[j].Path { return out[i].Path < out[j].Path }
+		if out[i].Requests != out[j].Requests {
+			return out[i].Requests > out[j].Requests
+		}
+		if out[i].Errors != out[j].Errors {
+			return out[i].Errors > out[j].Errors
+		}
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
 		return out[i].Method < out[j].Method
 	})
 	return out
@@ -117,9 +129,13 @@ func buildEndpoints(entries []traffic.Request) []Endpoint {
 
 func buildStatusCodes(entries []traffic.Request) []StatusCount {
 	counts := make(map[int]int)
-	for _, entry := range entries { counts[entry.Status]++ }
+	for _, entry := range entries {
+		counts[entry.Status]++
+	}
 	out := make([]StatusCount, 0, len(counts))
-	for status, count := range counts { out = append(out, StatusCount{Status: status, Count: count}) }
+	for status, count := range counts {
+		out = append(out, StatusCount{Status: status, Count: count})
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Status < out[j].Status })
 	return out
 }

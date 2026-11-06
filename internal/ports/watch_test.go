@@ -20,7 +20,7 @@ func TestSnapshotOf(t *testing.T) {
 type fakeExitError struct{ code int }
 
 func (e fakeExitError) Error() string { return "exit status" }
-func (e fakeExitError) ExitCode() int  { return e.code }
+func (e fakeExitError) ExitCode() int { return e.code }
 
 func TestTolerateNoMatchesTreatsExitOneAsEmptyResult(t *testing.T) {
 	// lsof exits 1 when no socket matches the filter.

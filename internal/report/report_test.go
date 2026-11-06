@@ -14,9 +14,9 @@ import (
 func sampleSession() traffic.Session {
 	created := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
 	return traffic.Session{Version: 1, CreatedAt: created, Requests: []traffic.Request{
-		{Time: created, Method: "GET", Path: "/health", Status: 200, Latency: 10*time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
-		{Time: created.Add(time.Second), Method: "GET", Path: "/api/items", Status: 500, Latency: 800*time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
-		{Time: created.Add(2*time.Second), Method: "GET", Path: "/api/items", Status: 200, Latency: 100*time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
+		{Time: created, Method: "GET", Path: "/health", Status: 200, Latency: 10 * time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
+		{Time: created.Add(time.Second), Method: "GET", Path: "/api/items", Status: 500, Latency: 800 * time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
+		{Time: created.Add(2 * time.Second), Method: "GET", Path: "/api/items", Status: 200, Latency: 100 * time.Millisecond, TargetHost: "localhost", TargetPort: 8080},
 	}}
 }
 
@@ -37,15 +37,21 @@ func TestBuildSummaryAndMetadata(t *testing.T) {
 func TestRenderIncludesSections(t *testing.T) {
 	got := Build(sampleSession(), Options{SessionPath: "session.json", Top: 3, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{"# DevPulse Traffic Report", "## Summary", "## HTTP Status Codes", "## Top Endpoints", "## Slowest Requests", "## Diagnostic Findings"} {
-		if !bytes.Contains(out.Bytes(), []byte(want)) { t.Errorf("report missing %q", want) }
+		if !bytes.Contains(out.Bytes(), []byte(want)) {
+			t.Errorf("report missing %q", want)
+		}
 	}
 }
 
 func TestBuildEndpointsSortedByVolumeThenErrors(t *testing.T) {
 	got := Build(sampleSession(), Options{Top: 5})
-	if len(got.Endpoints) != 2 { t.Fatalf("got %d endpoints, want 2", len(got.Endpoints)) }
+	if len(got.Endpoints) != 2 {
+		t.Fatalf("got %d endpoints, want 2", len(got.Endpoints))
+	}
 	if got.Endpoints[0].Path != "/api/items" || got.Endpoints[0].Requests != 2 || got.Endpoints[0].Errors != 1 {
 		t.Fatalf("unexpected top endpoint: %+v", got.Endpoints[0])
 	}
@@ -103,7 +109,9 @@ func TestBuildStatusCodesSortedAndCounted(t *testing.T) {
 	if len(got.StatusCodes) != 2 || got.StatusCodes[0] != (StatusCount{Status: 200, Count: 2}) || got.StatusCodes[1] != (StatusCount{Status: 500, Count: 1}) {
 		t.Fatalf("unexpected status distribution: %+v", got.StatusCodes)
 	}
-	if len(got.Slowest) != 0 { t.Fatalf("Top=0 should disable slowest list, got %+v", got.Slowest) }
+	if len(got.Slowest) != 0 {
+		t.Fatalf("Top=0 should disable slowest list, got %+v", got.Slowest)
+	}
 }
 
 func TestBuildEmptySessionHasEmptyCollections(t *testing.T) {
@@ -151,7 +159,9 @@ func TestRenderEscapesMarkdownTableCells(t *testing.T) {
 		t.Fatalf("fixture no longer puts the escaped request in the Slowest table: %+v", got.Slowest)
 	}
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	text := out.String()
 	if strings.Contains(text, "GET\nInjected") {
 		t.Fatalf("newline escaped into table output: %s", text)
@@ -172,7 +182,9 @@ func TestRenderTitleAndSessionPathCannotInjectMarkdown(t *testing.T) {
 		GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC),
 	})
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	text := out.String()
 	var headings []string
 	for _, line := range strings.Split(text, "\n") {
@@ -195,7 +207,9 @@ func TestRenderTitleAndSessionPathCannotInjectMarkdown(t *testing.T) {
 func TestRenderSectionsFollowDocumentedOrder(t *testing.T) {
 	got := Build(sampleSession(), Options{Top: 3, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	text := out.String()
 	last := -1
 	for _, heading := range []string{"## Summary", "## Top Endpoints", "## HTTP Status Codes", "## Slowest Requests", "## Diagnostic Findings"} {
@@ -213,7 +227,9 @@ func TestRenderSectionsFollowDocumentedOrder(t *testing.T) {
 func TestRenderTopZeroSaysSlowestDetailsWereOmitted(t *testing.T) {
 	got := Build(sampleSession(), Options{Top: 0, GeneratedAt: time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)})
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	section := markdownSection(t, out.String(), "Slowest Requests")
 	if strings.Contains(section, "No requests") {
 		t.Fatalf("Top 0 on a non-empty session claims there are no requests:\n%s", section)
@@ -226,7 +242,9 @@ func TestRenderTopZeroSaysSlowestDetailsWereOmitted(t *testing.T) {
 func TestRenderEmptySessionSaysNoRequests(t *testing.T) {
 	got := Build(traffic.Session{}, Options{Top: 0})
 	var out bytes.Buffer
-	if err := Render(&out, got); err != nil { t.Fatal(err) }
+	if err := Render(&out, got); err != nil {
+		t.Fatal(err)
+	}
 	section := markdownSection(t, out.String(), "Slowest Requests")
 	if !strings.Contains(section, "No requests") || strings.Contains(section, "omitted") {
 		t.Fatalf("empty session should report no requests:\n%s", section)

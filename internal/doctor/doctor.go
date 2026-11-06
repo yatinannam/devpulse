@@ -14,16 +14,16 @@ import (
 type Profile string
 
 const (
-	ProfileDefault   Profile = "default"
-	ProfileStrict    Profile = "strict"
+	ProfileDefault    Profile = "default"
+	ProfileStrict     Profile = "strict"
 	ProfilePermissive Profile = "permissive"
 )
 
 type Thresholds struct {
-	SlowRequest time.Duration
-	ErrorStatus int
+	SlowRequest          time.Duration
+	ErrorStatus          int
 	MinDuplicateRequests int
-	DuplicateWindow time.Duration
+	DuplicateWindow      time.Duration
 }
 
 func ThresholdsFor(profile Profile) (Thresholds, error) {
@@ -85,8 +85,8 @@ func AnalyzeWithProfile(entries []traffic.Request, profile Profile) []Finding {
 		groups[k] = append(groups[k], e)
 	}
 	type duplicate struct {
-		k key
-		count int
+		k           key
+		count       int
 		first, last time.Time
 	}
 	var duplicates []duplicate

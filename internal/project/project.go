@@ -82,10 +82,10 @@ func SelectTarget(info Info, services []discovery.Service) (discovery.Service, b
 
 	expected := map[string]int{
 		"Node / Next.js": 3000,
-		"Node / Vite":   5173,
-		"Python":        8000,
-		"Go":            8080,
-		"Java":          8080,
+		"Node / Vite":    5173,
+		"Python":         8000,
+		"Go":             8080,
+		"Java":           8080,
 	}
 	if port, ok := expected[info.Kind]; ok {
 		for _, s := range candidates {
