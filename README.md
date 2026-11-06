@@ -116,9 +116,9 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 
 | Command | Flags (default) | Description |
 | --- | --- | --- |
-| `init` | | Detect the project type, probe local HTTP services, and save the best match as `target` in `./.devpulse/config.json` |
+| `init` | | Detect the project type, probe local HTTP services, and save the best match as `target` in `.devpulse/config.json` at the project root (the nearest directory with a project marker, searching upward and stopping at the repository root) |
 | `ports` | `--watch` (`false`) | List listening TCP ports with PID and process. `--watch` then prints `+`/`-` events every second |
-| `traffic` | `--listen` (config), `--target` (config) | Run the recording proxy. `SIGINT`/`SIGTERM` saves the session and exits |
+| `traffic` | `--listen` (config), `--target` (config), `--max-requests` (`10000`) | Run the recording proxy. `SIGINT`/`SIGTERM` drains in-flight requests (5 s deadline), saves the session and exits. A second signal force-quits without saving |
 | `status` | `--from` (session) | Discovered services joined with captured traffic, per-endpoint stats and health |
 | `watch` | `--interval` (config, `2s`), `--from` (session) | Re-render `status` on an interval |
 
@@ -153,8 +153,8 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | Code | Meaning |
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
-| `1` | Runtime failure (unreadable session, I/O error, discovery failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until`, `--profile`, `-n` or interval |
+| `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
 
 ---
 
@@ -449,13 +449,12 @@ Guidelines:
 
 | Area | Current behavior |
 | --- | --- |
-| Recorder | Keeps only the newest 1000 requests per capture |
-| Latency | Measured to upstream response headers. Body transfer time is excluded |
-| Bytes | Taken from `Content-Length`. `-1` for chunked or compressed responses of unknown length |
-| Shutdown | Waits for in-flight requests without a deadline. Long-lived streams (SSE) can delay exit |
-| Target | `--target` must include a scheme (`http://`). A bare `host:port` is not rejected yet |
-| JSON | Some empty collections serialize as `null` rather than `[]` |
-| Probing | Probes use `127.0.0.1`. Services bound only to `::1` or a LAN address are listed but not identified as HTTP |
+| Recorder | Keeps the newest `--max-requests` requests (default 10000). Older ones are dropped, with a warning on stderr and a count in the save message |
+| Host header | The client's `Host` header is forwarded unchanged, so a virtual-hosted upstream that routes on `Host` may serve the wrong site |
+| Shutdown | In-flight requests get 5 s to finish. Connections still open after that (for example SSE streams) are force-closed; those requests may be missing from the session or recorded with a partial byte count |
+| Probing | Probes try `127.0.0.1`, then `::1`. Services bound only to a LAN address are listed but not identified as HTTP |
+| CI gating | `doctor` and `anomalies` exit 0 even when they report findings. Parse `--json` output to fail a pipeline |
+| Race tests | `go test -race` needs cgo and a working C toolchain; CI runs it on Linux |
 
 ---
 
