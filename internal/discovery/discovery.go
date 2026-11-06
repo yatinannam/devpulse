@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -60,6 +61,12 @@ func probeEntry(entry ports.Entry, timeout time.Duration) Service {
 	return s
 }
 
+// httpBudget bounds the HEAD and GET requests of one probe together. It is
+// separate from the short dial timeout because a listener that accepts TCP
+// may still take a while to answer: next dev compiles a page on its first
+// request.
+const httpBudget = 2 * time.Second
+
 // loopbackHosts are dialled in order. A server bound only to ::1 (Vite binds
 // "localhost" there on Node 17 and later) refuses 127.0.0.1.
 var loopbackHosts = []string{"127.0.0.1", "::1"}
@@ -79,21 +86,31 @@ func dialLoopback(port int, timeout time.Duration) (string, bool) {
 }
 
 // probe reports whether the listener on port speaks HTTP, its fingerprint,
-// its Server header and the loopback host:port that answered.
+// its Server header and the loopback host:port that answered. timeout bounds
+// each TCP dial; the HTTP requests share httpBudget.
 func probe(port int, timeout time.Duration) (bool, string, string, string) {
 	addr, ok := dialLoopback(port, timeout)
 	if !ok {
 		return false, "", "", ""
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), httpBudget)
+	defer cancel()
+	// A transport of its own, without keep-alives, so no idle connection or
+	// its goroutines outlive the probe, and no proxy setting is consulted.
+	transport := &http.Transport{
+		DialContext:       (&net.Dialer{Timeout: timeout}).DialContext,
+		DisableKeepAlives: true,
+	}
+	defer transport.CloseIdleConnections()
 	client := http.Client{
-		Timeout: timeout,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 	// Start with HEAD to avoid downloading application pages. If headers do not identify the service, retry with a bounded GET.
-	req, err := http.NewRequest(http.MethodHead, "http://"+addr+"/", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "http://"+addr+"/", nil)
 	if err != nil {
 		return false, "", "", ""
 	}
@@ -108,7 +125,7 @@ func probe(port int, timeout time.Duration) (bool, string, string, string) {
 	kind := identify(resp.Header, "")
 	if kind == KindHTTPService {
 		_ = resp.Body.Close()
-		getReq, err := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
+		getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/", nil)
 		if err == nil {
 			getReq.Header.Set(traffic.ProbeHeader, "1")
 			// Ask for HTML as a browser does. Spring Boot renders its Whitelabel

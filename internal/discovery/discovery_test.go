@@ -1,14 +1,18 @@
 package discovery
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/traffic"
 )
 
@@ -73,5 +77,79 @@ func TestProbeIdentifiesStockSpringBoot(t *testing.T) {
 	}
 	if isHTTP, kind, _, _ := probe(port, 2*time.Second); !isHTTP || kind != "Java / Spring" {
 		t.Fatalf("probe = (%v, %q), want (true, %q)", isHTTP, kind, "Java / Spring")
+	}
+}
+
+// TestProbeWaitsForASlowFirstResponse mimics next dev, which compiles a page
+// on its first request. The dial timeout that init passes (250 ms) must not
+// also cut off the HTTP requests.
+func TestProbeWaitsForASlowFirstResponse(t *testing.T) {
+	var compile sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		compile.Do(func() { time.Sleep(600 * time.Millisecond) })
+		w.Header().Set("X-Powered-By", "Next.js")
+		_, _ = w.Write([]byte(`<script src="/_next/static/chunks/main.js"></script>`))
+	}))
+	defer server.Close()
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	got := probeEntry(ports.Entry{Port: port}, 250*time.Millisecond)
+	if !got.HTTP || got.Kind != "Node / Next.js" {
+		t.Fatalf("probeEntry() = %+v, want an HTTP service identified as Node / Next.js", got)
+	}
+}
+
+// TestProbeIsBoundedAndLeavesNoGoroutines covers a listener that accepts
+// connections and never answers. The probe must give up within its budget
+// and leave no connection goroutines behind once it returns.
+func TestProbeIsBoundedAndLeavesNoGoroutines(t *testing.T) {
+	silent, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	var conns []net.Conn
+	var mu sync.Mutex
+	go func() {
+		for {
+			c, err := silent.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	defer func() {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	}()
+
+	answering := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer answering.Close()
+
+	before := runtime.NumGoroutine()
+	start := time.Now()
+	got := probeEntry(ports.Entry{Port: silent.Addr().(*net.TCPAddr).Port}, 250*time.Millisecond)
+	if elapsed := time.Since(start); elapsed > httpBudget+time.Second {
+		t.Fatalf("probe of a silent listener took %s, want at most about %s", elapsed, httpBudget)
+	}
+	if got.HTTP {
+		t.Fatalf("probeEntry() = %+v, want a listener that never answers to be non-HTTP", got)
+	}
+	if got := probeEntry(ports.Entry{Port: answering.Listener.Addr().(*net.TCPAddr).Port}, 250*time.Millisecond); !got.HTTP {
+		t.Fatalf("probeEntry() = %+v, want HTTP", got)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n := runtime.NumGoroutine(); n > before {
+		t.Fatalf("%d goroutines after the probes, %d before: probe connections were left open", n, before)
 	}
 }

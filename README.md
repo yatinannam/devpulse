@@ -319,6 +319,8 @@ Each listener is probed concurrently on the loopback interface:
 2. `HEAD /`, with redirects not followed.
 3. If the headers do not identify the server, `GET /` with `Accept: text/html,*/*;q=0.8` and the body capped at 8 KiB. Asking for HTML as a browser does makes Spring Boot return its Whitelabel Error Page instead of a JSON error.
 
+The `HEAD` and `GET` requests share a 2 s budget, separate from the dial timeout, so a dev server that compiles its first page on request (`next dev`) still counts as HTTP. One probe takes at most about 2.6 s, every listener is probed at once, and probes use no keep-alive connections, so nothing stays open after discovery returns.
+
 Every probe carries `X-DevPulse-Probe: 1`. A running DevPulse proxy answers it with `204` and `X-DevPulse-Proxy: 1`, so discovery from `status`, `watch`, `init`, `baseline` and `diff` is never forwarded to your app or recorded in the session.
 
 | Signal | Classified as |
