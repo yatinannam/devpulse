@@ -46,6 +46,33 @@ func TestTrafficLineFitsNarrowTerminals(t *testing.T) {
 	}
 }
 
+func TestTrafficLineTruncatesALongMethod(t *testing.T) {
+	// Go accepts any token as a method. A 40-character one left no room for
+	// the path, and strings.Repeat panicked on the negative padding.
+	plainOutput(t)
+	r := traffic.Request{Time: at(10, 0, 1), Method: strings.Repeat("X", 40), Path: "/api/users", Status: 500, Latency: 1300 * time.Millisecond, TargetHost: "localhost", TargetPort: 3000}
+	var got string
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("trafficLine panicked: %v", p)
+			}
+		}()
+		got = trafficLine(60, r).Plain()
+	}()
+	if ui.Width(got) > 60 {
+		t.Fatalf("line is %d wide, limit 60: %q", ui.Width(got), got)
+	}
+	if !strings.Contains(got, "  "+strings.Repeat("X", 11)+"…  ") || !strings.Contains(got, "500    1.3s") {
+		t.Fatalf("method should be cut to 12 columns and the numbers kept: %q", got)
+	}
+	// A method a little longer than the 7-column field is still shown whole.
+	r.Method = "PROPFIND"
+	if got := trafficLine(80, r).Plain(); !strings.Contains(got, "  PROPFIND  /api/users") {
+		t.Fatalf("an 8-letter method should not be cut: %q", got)
+	}
+}
+
 func TestTrafficLineColorsStatusAndLatency(t *testing.T) {
 	plainOutput(t)
 	ui.SetColor(true)
