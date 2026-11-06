@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -62,6 +63,32 @@ func TestShutdownReturnsWithinTheDeadlineDespiteAHungHandler(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve did not return after Shutdown")
+	}
+}
+
+func TestShutdownDoesNotWaitForAConnectionThatNeverSentARequest(t *testing.T) {
+	// Browsers open speculative connections they may never use. net/http
+	// treats such a StateNew connection as busy for its first 5 seconds,
+	// so Shutdown used to wait the whole 5s deadline and then report that
+	// requests were cut off although none was running.
+	server, _, err := Start(http.NotFoundHandler(), "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	time.Sleep(100 * time.Millisecond) // let the server accept it
+
+	began := time.Now()
+	err = Shutdown(server, DefaultShutdownTimeout)
+	if elapsed := time.Since(began); elapsed > time.Second {
+		t.Errorf("Shutdown took %s with only an unused connection open", elapsed)
+	}
+	if err != nil {
+		t.Errorf("Shutdown = %v with no request in flight, want nil", err)
 	}
 }
 
