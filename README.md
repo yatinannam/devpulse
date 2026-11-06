@@ -30,6 +30,7 @@ Everything downstream (`status`, `doctor`, `summary`, `timeline`, `baseline`, `d
 - [Quick start](#quick-start)
 - [Architecture](#architecture)
 - [Command reference](#command-reference)
+- [Terminal output](#terminal-output)
 - [APIWatch: traffic capture](#apiwatch-traffic-capture)
 - [PortDoctor: service discovery](#portdoctor-service-discovery)
 - [Analysis engine](#analysis-engine)
@@ -155,6 +156,84 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
 | `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, invalid `--profile`, `-n` or interval |
+
+---
+
+## Terminal output
+
+Text output is built to show what is wrong at a glance and stay quiet when everything is fine. Every command starts with a `devpulse <command>` title line; context such as the session file and request count sits right-aligned on the same line, or on the next line when it does not fit. Rendering lives in `internal/ui` and uses only the standard library. `--json` output, stderr messages and exit codes do not depend on any of it.
+
+```text
+devpulse status                                            demo.json, 4 requests
+
+HTTP services
+  ✖ :3000  Node / Next.js  node 46552   4 req  1 err  556ms avg  2 slow
+      GET /api/orders/:id               2      1      1.06s      slow
+      GET /api/users                    2      0       52ms
+  ● :8790  HTTP service    python 1234  0 req
+
+Other listeners (2)
+  :22 sshd  :445 System
+
+Traffic   4 requests   1 error (25.0%)   avg 556ms   p50 52ms   p95 1.3s
+          p99 1.3s   2 slow
+```
+
+### Color
+
+Color uses the 16 base ANSI colors only, so your terminal theme decides the exact shades. The first matching rule wins:
+
+| Condition | Color |
+| --- | --- |
+| `DEVPULSE_COLOR=always` | On, even when output is piped |
+| `DEVPULSE_COLOR=never` | Off |
+| `NO_COLOR` is set, to any value | Off |
+| `TERM=dumb` | Off |
+| stdout is not a terminal (pipe, file, CI log) | Off |
+| Windows console that refuses virtual-terminal processing | Off. DevPulse enables it with `SetConsoleMode` |
+| Otherwise | On |
+
+| Token | ANSI | Used for |
+| --- | --- | --- |
+| ok | green (32) | Healthy services, 2xx statuses, `●`, opened ports (`+`) |
+| warn | yellow (33) | 4xx statuses, latency of 500 ms or more, `▲` |
+| error | red (31) | 5xx statuses, latency of 1 s or more, `✖`, closed ports (`-`), error counts |
+| muted | bright black (90) | Table headers, labels, title context, idle listeners, advice |
+| accent | magenta (35) | Only the word `devpulse` in title lines and the pulse sparkline |
+| bold | | Titles and key numbers |
+
+3xx statuses and latency under 500 ms use the default foreground.
+
+### Glyphs
+
+Every glyph sits next to a word, and the shapes differ, so output still reads without color.
+
+| Glyph | Meaning |
+| --- | --- |
+| `●` | OK: a healthy service, a valid session, no findings, a new service or endpoint in `diff` |
+| `▲` | Warning: slow requests, a duplicate burst, a removed or replaced service or endpoint |
+| `✖` | Error: HTTP errors, an invalid session, an error-severity anomaly |
+| `○` | Idle or informational: a non-HTTP listener, an `info` anomaly, changed numbers in `diff` |
+
+### The pulse
+
+The only decorative element is the pulse, drawn with `▁▂▃▄▅▆▇█` in the accent color:
+
+- `summary` draws latency per request in capture order. A long session is resampled so each cell shows the slowest request in its slice.
+- `timeline` draws a bar per bucket, scaled to the busiest bucket, with the error share in red.
+- `watch` draws how many requests each refresh added, over the last 30 refreshes, in the title line.
+
+### Width
+
+Output fits the terminal width: `COLUMNS` when it is set, otherwise the detected width (`GetConsoleScreenBufferInfo` on Windows, `TIOCGWINSZ` on Linux and macOS), otherwise 100. The result is clamped to 60–160 columns, and no line is wider.
+
+- Tables size their columns to the content. Numbers are right-aligned. The flexible column, such as a path or a process name, gives up width first and is cut with `…`.
+- Paths in `init`, `config` and `traffic` keep their end (`…my-app/.devpulse/config.json`), so the file name stays visible.
+- Prose that must not lose words wraps instead: `doctor` details and advice, and the messages in `validate`, `diff` and `anomalies`.
+- Width is counted in runes, with glyphs and box characters as one column. East Asian wide characters in paths can push a line past the edge.
+- `status` lists HTTP services in full, sorted by port, with up to five endpoints each, worst first. Other TCP listeners are folded into a compact grid.
+
+`watch` clears the screen between refreshes only when stdout is a terminal. When it is piped, frames are separated by a blank line. If the configuration cannot be loaded, `watch` warns on stderr and continues with the defaults.
 
 ---
 
