@@ -62,6 +62,47 @@ func TestRunReportWritesFileWithPrivatePermissions(t *testing.T) {
 	}
 }
 
+// replaceSyncFile swaps syncFile for the test and restores it afterwards.
+func replaceSyncFile(t *testing.T, sync func(*os.File) error) {
+	t.Helper()
+	original := syncFile
+	syncFile = sync
+	t.Cleanup(func() { syncFile = original })
+}
+
+func TestRunReportFlushesBeforeRename(t *testing.T) {
+	// report renamed its temporary file without fsync, so a crash could
+	// leave an empty report, although README promises it never does.
+	sessionPath := writeReportFixture(t)
+	dir := t.TempDir()
+	var flushed []string
+	replaceSyncFile(t, func(f *os.File) error {
+		flushed = append(flushed, filepath.Base(f.Name()))
+		return f.Sync()
+	})
+	for _, format := range []string{"markdown", "json"} {
+		flushed = nil
+		if err := runReportWithFormat(sessionPath, filepath.Join(dir, "report."+format), "Report", 1, format, &bytes.Buffer{}); err != nil {
+			t.Fatal(err)
+		}
+		if len(flushed) != 1 || !strings.HasPrefix(flushed[0], ".devpulse-report-") {
+			t.Fatalf("%s report: flushed %q, want the temporary report once", format, flushed)
+		}
+	}
+}
+
+func TestRunReportFailsAndLeavesNothingWhenTheFlushFails(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	dir := t.TempDir()
+	replaceSyncFile(t, func(*os.File) error { return io.ErrShortWrite })
+	if err := runReport(sessionPath, filepath.Join(dir, "report.md"), "Report", 1, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected a failed flush to fail the report")
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("want an empty directory after a failed flush, got %v (%v)", entries, err)
+	}
+}
+
 func TestRunReportRejectsNegativeTopAndMissingSession(t *testing.T) {
 	if err := runReport("ignored", "-", "Report", -1, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected negative top to fail")

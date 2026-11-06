@@ -66,6 +66,10 @@ func runReportWithFormat(sessionPath, outputPath, title string, top int, format 
 		_ = tmp.Close()
 		return fmt.Errorf("write report: %w", err)
 	}
+	if err := syncFile(tmp); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush report: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close report: %w", err)
 	}

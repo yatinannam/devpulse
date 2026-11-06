@@ -52,6 +52,11 @@ func ensureDistinctOutput(sourcePath, outputPath string) error {
 	return nil
 }
 
+// syncFile flushes a temporary output file to disk before it is renamed
+// into place, so a crash cannot leave an empty or partial file under the
+// final name. Tests replace it to check that every writer flushes.
+var syncFile = (*os.File).Sync
+
 // parseWatchInterval accepts only positive durations; time.NewTicker panics
 // on zero or negative intervals.
 func parseWatchInterval(value string) (time.Duration, error) {

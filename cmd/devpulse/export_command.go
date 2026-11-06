@@ -194,7 +194,7 @@ func writeExportFile(outputPath string, data []byte) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write temporary CSV file: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := syncFile(tmp); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("sync temporary CSV file: %w", err)
 	}
