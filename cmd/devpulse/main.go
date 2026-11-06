@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -18,7 +19,6 @@ import (
 	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/ports"
 	"github.com/yatinannam/devpulse/internal/project"
-	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
 	"github.com/yatinannam/devpulse/internal/ui"
 )
@@ -400,38 +400,24 @@ func statusCommand(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("DEVPULSE")
-	fmt.Println("────────────────────────────────────────────────")
-
+	width := ui.TermWidth()
 	s, loadErr := traffic.LoadSession(*from)
-	if loadErr != nil {
-		fmt.Println("LOCAL SERVICES")
-		for _, svc := range services {
-			marker := "○"
-			if svc.HTTP {
-				marker = "●"
-			}
-			kind := svc.Kind
-			if kind == "" {
-				kind = "TCP service"
-			}
-			fmt.Printf("%s :%-5d %-18s PID %-8s\n", marker, svc.Port, kind, svc.PID)
-		}
-		fmt.Printf("\nHTTP TRAFFIC\nNo captured session (%s)\n", *from)
-		return
+	var context ui.Line
+	if loadErr == nil {
+		context = sessionContext(*from, len(s.Requests))
 	}
-
-	groups := status.GroupByService(services, s.Requests)
-	status.PrintServices(groups)
-	fmt.Printf("\nSession: %s\n", *from)
-	summary := status.Build(s.Requests)
-	fmt.Printf("Requests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-		summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
-			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
+	ui.Title(os.Stdout, width, "status", context)
+	renderStatusBody(os.Stdout, width, services, s, loadErr, *from)
 }
 
 func watchCommand(args []string) {
-	c := loadConfig()
+	// A broken config must not stop watch, or even `watch --help`: warn
+	// and fall back to the defaults.
+	c, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse: %v; using default settings\n", err)
+		c = config.Default()
+	}
 	defaultInterval := 2 * time.Second
 	if d, err := parseWatchInterval(c.WatchInterval); err == nil {
 		defaultInterval = d
@@ -451,29 +437,29 @@ func watchCommand(args []string) {
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
 
+	pulse := ratePulse{limit: 30}
+	frames := 0
 	refresh := func() {
 		services, err := discovery.Discover(300 * time.Millisecond)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			return
 		}
-		fmt.Print("\033[2J\033[H")
-		fmt.Println("DEVPULSE WATCH")
-		fmt.Println("────────────────────────────────────────────────")
-
-		s, err := traffic.LoadSession(*from)
-		if err != nil {
-			status.PrintServices(status.GroupByService(services, nil))
-			fmt.Printf("\nNo captured session: %s\n", *from)
-			return
+		s, loadErr := traffic.LoadSession(*from)
+		if loadErr == nil {
+			pulse.observe(len(s.Requests))
+		} else {
+			pulse.observe(0)
 		}
-		status.PrintServices(status.GroupByService(services, s.Requests))
-		summary := status.Build(s.Requests)
-		fmt.Printf("\nRequests %d · Errors %d · Average %s · P50 %s · P95 %s · P99 %s · Slow %d\n",
-			summary.Total, summary.Errors, summary.Average.Round(time.Millisecond),
-			summary.P50.Round(time.Millisecond), summary.P95.Round(time.Millisecond), summary.P99.Round(time.Millisecond), summary.Slow)
-		fmt.Printf("Updated %s · refresh %s · Ctrl+C to stop\n",
-			time.Now().Format("15:04:05"), *interval)
+		// Render the whole frame first so the screen is cleared and
+		// redrawn in one write.
+		var frame bytes.Buffer
+		renderWatchFrame(&frame, ui.TermWidth(), time.Now(), *interval, &pulse, services, s, loadErr, *from)
+		if !ui.ClearScreen() && frames > 0 {
+			fmt.Println()
+		}
+		frames++
+		_, _ = os.Stdout.Write(frame.Bytes())
 	}
 
 	refresh()

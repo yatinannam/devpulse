@@ -19,6 +19,17 @@ func IsTerminal() bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
+// ClearScreen homes the cursor and clears stdout when it is a terminal that
+// accepts escape sequences. It reports whether it cleared, so callers can
+// separate frames another way when output is piped.
+func ClearScreen() bool {
+	if !IsTerminal() || !enableVirtualTerminal() {
+		return false
+	}
+	_, err := os.Stdout.WriteString("\033[H\033[2J")
+	return err == nil
+}
+
 // TermWidth returns the width output must fit in: COLUMNS when it is set,
 // otherwise the detected terminal width, otherwise 100. The result is
 // clamped to 60..160.

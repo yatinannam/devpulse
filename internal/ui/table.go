@@ -30,6 +30,9 @@ type Column struct {
 	// Min is the narrowest the column shrinks to before other columns give
 	// up width. Zero means the header's width.
 	Min int
+	// Max caps the column's width even when there is room. Zero means no
+	// cap.
+	Max int
 }
 
 // Table lays out rows in aligned columns that fit the terminal width.
@@ -70,6 +73,11 @@ func (t *Table) widths(limit int) []int {
 	for _, row := range t.rows {
 		for i := 0; i < len(w) && i < len(row); i++ {
 			w[i] = max(w[i], row[i].Width())
+		}
+	}
+	for i, c := range t.Columns {
+		if c.Max > 0 {
+			w[i] = min(w[i], c.Max)
 		}
 	}
 	excess := t.Indent - limit

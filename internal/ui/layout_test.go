@@ -53,6 +53,22 @@ func TestTableTruncatesTheFlexColumnToFit(t *testing.T) {
 	}
 }
 
+func TestTableCapsAColumnAtMax(t *testing.T) {
+	SetColor(false)
+	got := render(func(b *strings.Builder) {
+		tb := NewTable(Column{Flex: true, Max: 8}, Column{Align: AlignRight})
+		tb.Row(Plain("/api/orders/:id"), Plain("2"))
+		tb.Row(Plain("/"), Plain("10"))
+		tb.Render(b, 80)
+	})
+	want := "" +
+		"/api/or…   2\n" +
+		"/         10\n"
+	if got != want {
+		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestTableWrapsAWrapColumn(t *testing.T) {
 	SetColor(false)
 	got := render(func(b *strings.Builder) {
