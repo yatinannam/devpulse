@@ -81,7 +81,7 @@ func TestProbeIdentifiesStockSpringBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if isHTTP, kind, _, _ := probe(port, 2*time.Second); !isHTTP || kind != "Java / Spring" {
+	if isHTTP, kind, _, _ := probe(port, Timeouts{Dial: 2 * time.Second, HTTP: 2 * time.Second}); !isHTTP || kind != "Java / Spring" {
 		t.Fatalf("probe = (%v, %q), want (true, %q)", isHTTP, kind, "Java / Spring")
 	}
 }
@@ -99,7 +99,7 @@ func TestProbeWaitsForASlowFirstResponse(t *testing.T) {
 	defer server.Close()
 
 	port := server.Listener.Addr().(*net.TCPAddr).Port
-	got := probeEntry(ports.Entry{Port: port}, 250*time.Millisecond)
+	got := probeEntry(ports.Entry{Port: port}, Patient)
 	if !got.HTTP || got.Kind != "Node / Next.js" {
 		t.Fatalf("probeEntry() = %+v, want an HTTP service identified as Node / Next.js", got)
 	}
@@ -115,7 +115,7 @@ func TestProbeRejectsAnHTTPSServer(t *testing.T) {
 	defer server.Close()
 
 	port := server.Listener.Addr().(*net.TCPAddr).Port
-	if got := probeEntry(ports.Entry{Port: port}, 250*time.Millisecond); got.HTTP || got.URL != "" {
+	if got := probeEntry(ports.Entry{Port: port}, Patient); got.HTTP || got.URL != "" {
 		t.Fatalf("probeEntry() = %+v, want an HTTPS-only server to be non-HTTP with no URL", got)
 	}
 }
@@ -155,14 +155,14 @@ func TestProbeIsBoundedAndLeavesNoGoroutines(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	start := time.Now()
-	got := probeEntry(ports.Entry{Port: silent.Addr().(*net.TCPAddr).Port}, 250*time.Millisecond)
-	if elapsed := time.Since(start); elapsed > httpBudget+time.Second {
-		t.Fatalf("probe of a silent listener took %s, want at most about %s", elapsed, httpBudget)
+	got := probeEntry(ports.Entry{Port: silent.Addr().(*net.TCPAddr).Port}, Patient)
+	if elapsed := time.Since(start); elapsed > Patient.HTTP+time.Second {
+		t.Fatalf("probe of a silent listener took %s, want at most about %s", elapsed, Patient.HTTP)
 	}
 	if got.HTTP {
 		t.Fatalf("probeEntry() = %+v, want a listener that never answers to be non-HTTP", got)
 	}
-	if got := probeEntry(ports.Entry{Port: answering.Listener.Addr().(*net.TCPAddr).Port}, 250*time.Millisecond); !got.HTTP {
+	if got := probeEntry(ports.Entry{Port: answering.Listener.Addr().(*net.TCPAddr).Port}, Patient); !got.HTTP {
 		t.Fatalf("probeEntry() = %+v, want HTTP", got)
 	}
 
@@ -172,5 +172,41 @@ func TestProbeIsBoundedAndLeavesNoGoroutines(t *testing.T) {
 	}
 	if n := runtime.NumGoroutine(); n > before {
 		t.Fatalf("%d goroutines after the probes, %d before: probe connections were left open", n, before)
+	}
+}
+
+// TestQuickProbeOfASilentListenerStaysFast covers the commands that probe on
+// every run or refresh. Windows RPC ports accept TCP and never answer, so
+// with init's patient budget every status call and watch refresh would wait
+// about 2 s for them.
+func TestQuickProbeOfASilentListenerStaysFast(t *testing.T) {
+	silent, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	go func() {
+		var held []net.Conn
+		defer func() {
+			for _, c := range held {
+				_ = c.Close()
+			}
+		}()
+		for {
+			c, err := silent.Accept()
+			if err != nil {
+				return
+			}
+			held = append(held, c)
+		}
+	}()
+
+	start := time.Now()
+	got := probeEntry(ports.Entry{Port: silent.Addr().(*net.TCPAddr).Port}, Quick)
+	if elapsed := time.Since(start); elapsed > Quick.HTTP+500*time.Millisecond {
+		t.Fatalf("quick probe of a silent listener took %s, want at most about %s", elapsed, Quick.HTTP)
+	}
+	if got.HTTP {
+		t.Fatalf("probeEntry() = %+v, want a listener that never answers to be non-HTTP", got)
 	}
 }

@@ -83,7 +83,7 @@ func initCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(250 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Patient)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -114,7 +114,7 @@ func baselineCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -143,7 +143,7 @@ func diffCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -363,7 +363,7 @@ func statusCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
 	mustParseArgs(fs, args)
 
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -410,7 +410,7 @@ func watchCommand(args []string) {
 	pulse := ratePulse{limit: 30}
 	frames := 0
 	refresh := func() {
-		services, err := discovery.Discover(300 * time.Millisecond)
+		services, err := discovery.Discover(discovery.Quick)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			return

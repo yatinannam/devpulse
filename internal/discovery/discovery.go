@@ -32,7 +32,22 @@ type Service struct {
 	Server  string
 }
 
-func Discover(timeout time.Duration) ([]Service, error) {
+// Timeouts bounds one listener probe.
+type Timeouts struct {
+	Dial time.Duration // each TCP dial
+	HTTP time.Duration // the HEAD and GET requests together
+}
+
+// Quick suits commands that probe every listener on each run or refresh
+// (status, watch, baseline, diff, anomalies). Windows RPC ports accept TCP and
+// never answer, so the HTTP budget is what each such command waits for them.
+var Quick = Timeouts{Dial: 300 * time.Millisecond, HTTP: 600 * time.Millisecond}
+
+// Patient suits init, which probes once and has to recognise a dev server
+// that compiles its first page on request (next dev) as HTTP.
+var Patient = Timeouts{Dial: 250 * time.Millisecond, HTTP: 2 * time.Second}
+
+func Discover(timeout Timeouts) ([]Service, error) {
 	entries, err := ports.List()
 	if err != nil {
 		return nil, err
@@ -51,7 +66,7 @@ func Discover(timeout time.Duration) ([]Service, error) {
 }
 
 // probeEntry probes one listener and describes it as a Service.
-func probeEntry(entry ports.Entry, timeout time.Duration) Service {
+func probeEntry(entry ports.Entry, timeout Timeouts) Service {
 	s := Service{Port: entry.Port, Process: entry.Process, PID: entry.PID, State: entry.State}
 	var addr string
 	s.HTTP, s.Kind, s.Server, addr = probe(entry.Port, timeout)
@@ -60,12 +75,6 @@ func probeEntry(entry ports.Entry, timeout time.Duration) Service {
 	}
 	return s
 }
-
-// httpBudget bounds the HEAD and GET requests of one probe together. It is
-// separate from the short dial timeout because a listener that accepts TCP
-// may still take a while to answer: next dev compiles a page on its first
-// request.
-const httpBudget = 2 * time.Second
 
 // loopbackHosts are dialled in order. A server bound only to ::1 (Vite binds
 // "localhost" there on Node 17 and later) refuses 127.0.0.1.
@@ -86,20 +95,21 @@ func dialLoopback(port int, timeout time.Duration) (string, bool) {
 }
 
 // probe reports whether the listener on port speaks HTTP, its fingerprint,
-// its Server header and the loopback host:port that answered. timeout bounds
-// each TCP dial; the HTTP requests share httpBudget.
-func probe(port int, timeout time.Duration) (bool, string, string, string) {
-	addr, ok := dialLoopback(port, timeout)
+// its Server header and the loopback host:port that answered. timeout.Dial
+// bounds each TCP dial and the HTTP requests share timeout.HTTP, because a
+// listener that accepts TCP may still take a while to answer.
+func probe(port int, timeout Timeouts) (bool, string, string, string) {
+	addr, ok := dialLoopback(port, timeout.Dial)
 	if !ok {
 		return false, "", "", ""
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), httpBudget)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout.HTTP)
 	defer cancel()
 	// A transport of its own, without keep-alives, so no idle connection or
 	// its goroutines outlive the probe, and no proxy setting is consulted.
 	transport := &http.Transport{
-		DialContext:       (&net.Dialer{Timeout: timeout}).DialContext,
+		DialContext:       (&net.Dialer{Timeout: timeout.Dial}).DialContext,
 		DisableKeepAlives: true,
 	}
 	defer transport.CloseIdleConnections()

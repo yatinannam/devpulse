@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/yatinannam/devpulse/internal/anomaly"
 	"github.com/yatinannam/devpulse/internal/baseline"
@@ -38,7 +37,7 @@ func anomaliesCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
