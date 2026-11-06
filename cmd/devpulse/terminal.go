@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/config"
+	"github.com/yatinannam/devpulse/internal/diff"
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
@@ -94,6 +95,93 @@ func renderRecent(w io.Writer, width int, path string, total int, recent []traff
 	requestTable(newestFirst, 0).Render(w, width)
 	fmt.Fprintln(w)
 	ui.Writeln(w, ui.Styled(fmt.Sprintf("Showing %d of %s", len(recent), ui.Count(total, "request", "requests")), ui.Muted))
+}
+
+// humanizeKind turns a stable kebab-case kind into a sentence-case label:
+// "latency-regression" becomes "Latency regression".
+func humanizeKind(kind string) string {
+	label := strings.ReplaceAll(kind, "-", " ")
+	if label == "" {
+		return ""
+	}
+	return strings.ToUpper(label[:1]) + label[1:]
+}
+
+// diffLevel picks the glyph for a baseline change: something new is ●,
+// something gone or replaced is ▲, and changed numbers are ○.
+func diffLevel(kind diff.Kind) ui.Level {
+	switch kind {
+	case diff.ServiceAdded, diff.EndpointAdded:
+		return ui.LevelOK
+	case diff.ServiceRemoved, diff.ServiceChanged, diff.EndpointRemoved:
+		return ui.LevelWarn
+	default:
+		return ui.LevelIdle
+	}
+}
+
+// changeRow is one line of a diff or anomaly list.
+type changeRow struct {
+	level                  ui.Level
+	kind, subject, message string
+}
+
+// renderChanges writes one line per change: glyph and kind, subject, then
+// the message, which wraps rather than losing words.
+func renderChanges(w io.Writer, width int, rows []changeRow) {
+	table := ui.NewTable(
+		ui.Column{},
+		ui.Column{Flex: true, Max: 28, Min: 8},
+		ui.Column{Flex: true, Wrap: true, Min: 20},
+	)
+	for _, r := range rows {
+		table.Row(ui.Join(r.level.Glyph(), ui.Plain(" "+humanizeKind(r.kind))), ui.Plain(r.subject), ui.Plain(r.message))
+	}
+	table.Render(w, width)
+}
+
+// countsLine joins non-zero severity counts: "1 error, 2 warnings, 1 info".
+func countsLine(errors, warnings, infos int) ui.Line {
+	var parts []ui.Line
+	if errors > 0 {
+		parts = append(parts, ui.Styled(ui.Count(errors, "error", "errors"), ui.Error))
+	}
+	if warnings > 0 {
+		parts = append(parts, ui.Styled(ui.Count(warnings, "warning", "warnings"), ui.Warn))
+	}
+	if infos > 0 {
+		parts = append(parts, ui.Styled(ui.Count(infos, "info", "info"), ui.Muted))
+	}
+	var out ui.Line
+	for i, p := range parts {
+		if i > 0 {
+			out = ui.Join(out, ui.Plain(", "))
+		}
+		out = ui.Join(out, p)
+	}
+	return out
+}
+
+// comparisonContext is the title context for commands that compare a
+// session with a baseline.
+func comparisonContext(sessionPath, baselinePath string) ui.Line {
+	return ui.Plain(filepath.Base(sessionPath) + " vs " + filepath.Base(baselinePath))
+}
+
+// renderDiff writes the diff command's text view.
+func renderDiff(w io.Writer, width int, sessionPath, baselinePath string, changes []diff.Change) {
+	ui.Title(w, width, "diff", comparisonContext(sessionPath, baselinePath))
+	if len(changes) == 0 {
+		ui.Marked(w, width, ui.LevelOK, ui.Plain("No changes since the baseline."))
+		return
+	}
+	rows := make([]changeRow, len(changes))
+	for i, c := range changes {
+		rows[i] = changeRow{diffLevel(c.Kind), string(c.Kind), c.Subject, c.Message}
+	}
+	renderChanges(w, width, rows)
+	fmt.Fprintln(w)
+	ui.Writeln(w, ui.Styled(ui.Count(len(changes), "change", "changes"), ui.Muted))
 }
 
 // latencyFact is a dim label followed by a colored latency: "p95 1.3s".

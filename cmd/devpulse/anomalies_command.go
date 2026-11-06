@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/yatinannam/devpulse/internal/discovery"
 	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 type anomalyPayload struct {
@@ -56,16 +58,34 @@ func anomaliesCommand(args []string) {
 		return
 	}
 
-	fmt.Println("DEVPULSE ANOMALIES")
-	fmt.Println("------------------------------------------------")
-	fmt.Printf("Baseline: %s\nSession:  %s\n", *baselinePath, *sessionPathFlag)
+	renderAnomalies(os.Stdout, ui.TermWidth(), *sessionPathFlag, *baselinePath, findings)
+}
+
+// renderAnomalies writes one line per finding with a glyph by severity
+// (✖ error, ▲ warning, ○ info), then the counts.
+func renderAnomalies(w io.Writer, width int, sessionPath, baselinePath string, findings []anomaly.Finding) {
+	ui.Title(w, width, "anomalies", comparisonContext(sessionPath, baselinePath))
 	if len(findings) == 0 {
-		fmt.Println()
-		fmt.Println("No baseline regressions detected.")
+		ui.Marked(w, width, ui.LevelOK, ui.Plain("No regressions against the baseline."))
 		return
 	}
-	for _, finding := range findings {
-		fmt.Printf("[%s] %-18s %s: %s\n",
-			finding.Severity, finding.Kind, finding.Subject, finding.Message)
+	rows := make([]changeRow, len(findings))
+	errors, warnings, infos := 0, 0, 0
+	for i, f := range findings {
+		level := ui.LevelIdle
+		switch f.Severity {
+		case anomaly.SeverityError:
+			level = ui.LevelError
+			errors++
+		case anomaly.SeverityWarning:
+			level = ui.LevelWarn
+			warnings++
+		default:
+			infos++
+		}
+		rows[i] = changeRow{level, f.Kind, f.Subject, f.Message}
 	}
+	renderChanges(w, width, rows)
+	fmt.Fprintln(w)
+	ui.Writeln(w, countsLine(errors, warnings, infos))
 }

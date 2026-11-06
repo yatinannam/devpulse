@@ -171,15 +171,7 @@ func diffCommand(args []string) {
 		}
 		return
 	}
-	fmt.Println("DEVPULSE DIFF")
-	fmt.Println("────────────────────────────────────────────────")
-	if len(changes) == 0 {
-		fmt.Println("No changes detected.")
-		return
-	}
-	for _, change := range changes {
-		fmt.Printf("[%s] %s: %s\n", change.Kind, change.Subject, change.Message)
-	}
+	renderDiff(os.Stdout, ui.TermWidth(), *session, *from, changes)
 }
 
 func loadConfig() config.Config {
@@ -481,8 +473,13 @@ func doctorCommand(args []string) {
 		}
 		return
 	}
-	fmt.Printf("Session: %s | Requests: %d | Profile: %s\n\n", *from, len(s.Requests), profile)
-	doctor.Print(findings)
+	width := ui.TermWidth()
+	ui.Title(os.Stdout, width, "doctor", sessionContext(*from, len(s.Requests), string(profile)+" profile"))
+	if len(s.Requests) == 0 {
+		writeNoTraffic(os.Stdout, width)
+		return
+	}
+	doctor.Print(os.Stdout, findings, len(s.Requests), width)
 }
 
 func printHelp() {

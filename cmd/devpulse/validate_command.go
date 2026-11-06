@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"github.com/yatinannam/devpulse/internal/output"
 	"github.com/yatinannam/devpulse/internal/sessioncheck"
 	"github.com/yatinannam/devpulse/internal/traffic"
+	"github.com/yatinannam/devpulse/internal/ui"
 )
 
 type validatePayload struct {
@@ -31,26 +33,39 @@ func runValidate(path string, jsonOutput bool, out io.Writer) (int, error) {
 			return 1, err
 		}
 	} else {
-		fmt.Fprintln(out, "DEVPULSE VALIDATE")
-		fmt.Fprintln(out, "------------------------------------------------")
-		fmt.Fprintf(out, "Session: %s\nRequests: %d\n", path, report.RequestCount)
-		if report.Valid {
-			fmt.Fprintln(out, "Session is valid.")
-		} else {
-			fmt.Fprintf(out, "Session is invalid (%d issue(s)).\n", len(report.Issues))
-			for _, issue := range report.Issues {
-				if issue.Request == 0 {
-					fmt.Fprintf(out, "[%s] %s: %s\n", issue.Code, issue.Field, issue.Message)
-				} else {
-					fmt.Fprintf(out, "[request %d] %s (%s): %s\n", issue.Request, issue.Field, issue.Code, issue.Message)
-				}
-			}
-		}
+		renderValidation(out, ui.TermWidth(), path, report)
 	}
 	if !report.Valid {
 		return 1, nil
 	}
 	return 0, nil
+}
+
+// renderValidation writes the verdict, then a Request, Field, Code,
+// Message table of the issues. Session-level issues show "-" as the
+// request.
+func renderValidation(w io.Writer, width int, path string, report sessioncheck.Report) {
+	ui.Title(w, width, "validate", sessionContext(path, report.RequestCount))
+	if report.Valid {
+		ui.Marked(w, width, ui.LevelOK, ui.Plain(fmt.Sprintf("Session is valid (%s).", ui.Count(report.RequestCount, "request", "requests"))))
+		return
+	}
+	ui.Marked(w, width, ui.LevelError, ui.Plain("Session is invalid: "+ui.Count(len(report.Issues), "issue", "issues")))
+	fmt.Fprintln(w)
+	table := ui.NewTable(
+		ui.Column{Header: "Request", Align: ui.AlignRight},
+		ui.Column{Header: "Field"},
+		ui.Column{Header: "Code"},
+		ui.Column{Header: "Message", Flex: true, Wrap: true, Min: 20},
+	)
+	for _, issue := range report.Issues {
+		request := ui.Styled("-", ui.Muted)
+		if issue.Request != 0 {
+			request = ui.Plain(strconv.Itoa(issue.Request))
+		}
+		table.Row(request, ui.Plain(issue.Field), ui.Plain(issue.Code), ui.Plain(issue.Message))
+	}
+	table.Render(w, width)
 }
 
 func validateCommand(args []string) {
