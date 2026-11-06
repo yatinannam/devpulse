@@ -156,7 +156,7 @@ Every command takes **flags only**. Pass files with flags such as `--from`. A st
 | ---: | --- |
 | `0` | Success. `doctor` and `anomalies` also exit 0 when they report findings |
 | `1` | Runtime failure (unreadable session, I/O error, discovery failure, invalid `--target`, session save failure), or `validate` found an invalid session |
-| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, a `traffic --listen` that is not `host:port`, a `config --target`, `--listen` or `--watch-interval` that `traffic` or `watch` would refuse, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
+| `2` | Usage error: unknown command or flag, positional argument, invalid `--status`, `--since`, `--until` (including a reversed window), negative `--limit` or `--top`, unsupported report `--format`, `--max-requests` below 1, a `traffic --listen` that is not `host:port`, a `traffic --target` that is the proxy's own `--listen` address, a `config --target`, `--listen` or `--watch-interval` that `traffic` or `watch` would refuse, invalid `--profile`, `-n` or interval, a `baseline --to` that is the `--from` session |
 
 ---
 
@@ -248,7 +248,8 @@ Output fits the terminal width: `COLUMNS` when it is set, otherwise the detected
                  │    stores per-request state (start time, client URI, record-once guard)
                  │    answers X-DevPulse-Probe itself (never forwarded)
                  │
-                 │  httputil.ReverseProxy
+                 │  httputil.ReverseProxy (adds X-DevPulse: 1 to every forwarded request)
+                 │    a request that already carries X-DevPulse ─► 508, never forwarded
                  │    ModifyResponse ─► wrap the body in a byte counter
                  │    body EOF/close ─► record status, latency, bytes (once)
                  │    ErrorHandler   ─► record 502, or 499 if the client cancelled (once)
@@ -271,7 +272,7 @@ Each captured request becomes one record:
 | `time` | RFC 3339 timestamp | Proxy receive time |
 | `method` | string | Request method |
 | `path` | string | Client request URI, including the query string, before any `--target` path prefix |
-| `status` | int | Upstream status; `502` if the upstream could not be reached, `499` if the client cancelled first |
+| `status` | int | Upstream status; `502` if the upstream could not be reached, `499` if the client cancelled first, `508` if the request had already passed through a DevPulse proxy |
 | `latency` | int (ns) | Receive time until the response body finished streaming |
 | `bytes` | int | Response body bytes actually streamed; `0` for `HEAD`, `204`, upgrades and errors |
 | `targetHost`, `targetPort` | string, int | Parsed from `--target` |
@@ -288,6 +289,8 @@ devpulse export --status 500 --path-prefix /api/ --out ./artifacts/errors.csv
 `--target` must be an `http://` or `https://` URL with a host and, if it names a port, a port from 1 to 65535. Anything else is rejected at startup with a hint, for example `invalid target "localhost:3000": include the scheme, for example http://localhost:3000`, instead of starting a proxy that fails every request.
 
 `--listen` must be `host:port` with a numeric port, for example `127.0.0.1:9090`. An empty value or a missing port is a usage error (exit `2`); an empty value would otherwise bind every interface on a random port. The host may be empty (`:9090`, all interfaces) and the port may be `0` (any free port). The `Proxy` line of the banner is printed once the listener is bound and shows the address it actually got, so `--listen 127.0.0.1:0` prints the real port.
+
+A `--target` that is the proxy's own `--listen` address (for example `--listen 127.0.0.1:9090 --target http://localhost:9090`) is a usage error (exit `2`), because every request would loop back into the proxy. The check compares the addresses literally, treating `localhost` as loopback and a wildcard listen host as matching any loopback target. Loops it cannot see, such as a target naming this machine by its LAN address, are caught at run time: the proxy adds `X-DevPulse: 1` to every request it forwards and answers any incoming request that already carries that header with `508 Loop Detected`, recorded like any other response, instead of forwarding it again. This also means one DevPulse proxy cannot be chained behind another.
 
 A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
 

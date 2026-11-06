@@ -278,3 +278,73 @@ func TestProxyRecordsFailedUpgradeOnlyOnce(t *testing.T) {
 		t.Fatalf("recorded status %d, want the 101 seen by ModifyResponse", got)
 	}
 }
+
+func TestProxyAnswersARequestThatAlreadyPassedADevPulseProxyWith508(t *testing.T) {
+	hits := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		_, _ = io.WriteString(w, "upstream")
+	}))
+	defer backend.Close()
+	recorder, proxy := startCapture(t, backend.URL)
+
+	req, err := http.NewRequest(http.MethodGet, proxy.URL+"/again", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(ForwardedHeader, "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	proxy.Close()
+
+	if resp.StatusCode != http.StatusLoopDetected {
+		t.Fatalf("client got %d %q, want 508", resp.StatusCode, body)
+	}
+	if hits != 0 {
+		t.Fatalf("a looped request was forwarded upstream %d times", hits)
+	}
+	entry := onlyEntry(t, recorder)
+	if entry.Status != http.StatusLoopDetected || entry.Path != "/again" || entry.Bytes != int64(len(body)) {
+		t.Fatalf("recorded %+v, want a 508 for /again with %d bytes", entry, len(body))
+	}
+}
+
+func TestProxyWhoseTargetIsItselfStopsAfterOneHop(t *testing.T) {
+	// --target pointing at --listen used to recurse until the process ran
+	// out of memory: one client request became thousands.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := NewRecorder(nil)
+	proxy, err := NewProxy("http://"+listener.Addr().String(), recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewUnstartedServer(Handler(proxy))
+	server.Listener.Close()
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(server.URL + "/loop")
+	if err != nil {
+		t.Fatalf("request through a self-targeting proxy failed: %v", err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	server.Close()
+
+	if resp.StatusCode != http.StatusLoopDetected {
+		t.Fatalf("client got %d, want 508", resp.StatusCode)
+	}
+	// The client's request and the one copy the proxy sent to itself.
+	if entries := recorder.Snapshot(); len(entries) != 2 {
+		t.Fatalf("recorded %d requests for one looped request, want 2", len(entries))
+	}
+}

@@ -96,8 +96,9 @@ func NewProxy(target string, recorder *Recorder) (*httputil.ReverseProxy, error)
 		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(u)
+	proxy.Transport = loopGuard{next: http.DefaultTransport}
 	original := proxy.Director
-	proxy.Director = func(req *http.Request) { original(req); req.Header.Set("X-DevPulse", "1") }
+	proxy.Director = func(req *http.Request) { original(req); req.Header.Set(ForwardedHeader, "1") }
 	record := func(req *http.Request, status int, bytes int64, state *requestState) {
 		port := 0
 		if p := u.Port(); p != "" {
@@ -209,11 +210,13 @@ type stateKey struct{}
 // context. uri is the client's request URI, captured before the proxy rewrites
 // the URL for the upstream. once guarantees a proxied request is recorded
 // exactly once, by whichever of the response body or the error handler
-// finishes it first.
+// finishes it first. looped is set when the request arrived carrying
+// ForwardedHeader.
 type requestState struct {
-	start time.Time
-	uri   string
-	once  sync.Once
+	start  time.Time
+	uri    string
+	looped bool
+	once   sync.Once
 }
 
 // countingBody wraps an upstream response body. It counts the bytes the proxy
@@ -249,6 +252,41 @@ const (
 	ProxyHeader = "X-DevPulse-Proxy"
 )
 
+// ForwardedHeader marks every request the proxy sends upstream. A request
+// that arrives already carrying it has been through a DevPulse proxy, so
+// forwarding it again would loop (for example --target pointing at the
+// proxy's own --listen address); the proxy answers it with 508 instead.
+const ForwardedHeader = "X-DevPulse"
+
+// loopGuard is the proxy's transport. It answers a request that Handler
+// marked as looped with a local 508 Loop Detected instead of sending it
+// upstream again. The 508 then flows through ModifyResponse, so it is
+// recorded like any upstream response.
+type loopGuard struct{ next http.RoundTripper }
+
+const loopMessage = "devpulse: this request already passed through a DevPulse proxy; check that --target is your app, not the proxy itself\n"
+
+func (g loopGuard) RoundTrip(req *http.Request) (*http.Response, error) {
+	state, ok := req.Context().Value(stateKey{}).(*requestState)
+	if !ok || !state.looped {
+		return g.next.RoundTrip(req)
+	}
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
+	return &http.Response{
+		Status:        "508 Loop Detected",
+		StatusCode:    http.StatusLoopDetected,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+		Body:          io.NopCloser(strings.NewReader(loopMessage)),
+		ContentLength: int64(len(loopMessage)),
+		Request:       req,
+	}, nil
+}
+
 func Handler(proxy http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(ProbeHeader) != "" {
@@ -256,7 +294,8 @@ func Handler(proxy http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		ctx := context.WithValue(r.Context(), stateKey{}, &requestState{start: time.Now(), uri: r.URL.RequestURI()})
+		state := &requestState{start: time.Now(), uri: r.URL.RequestURI(), looped: r.Header.Get(ForwardedHeader) != ""}
+		ctx := context.WithValue(r.Context(), stateKey{}, state)
 		proxy.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -355,6 +355,9 @@ func parseTrafficArgs(fs *flag.FlagSet, args []string, c config.Config) (traffic
 	if err := traffic.CheckListen(a.Listen); err != nil {
 		return a, err
 	}
+	if err := traffic.CheckNotSelf(a.Listen, a.Target); err != nil {
+		return a, err
+	}
 	return a, nil
 }
 

@@ -31,6 +31,43 @@ func TestCheckListenRequiresHostPort(t *testing.T) {
 	}
 }
 
+func TestCheckNotSelfRejectsATargetThatIsTheListenAddress(t *testing.T) {
+	for _, tc := range []struct{ listen, target string }{
+		{"127.0.0.1:9090", "http://127.0.0.1:9090"},
+		{"127.0.0.1:9090", "http://localhost:9090/api"},
+		{"localhost:9090", "http://127.0.0.1:9090"},
+		{"[::1]:9090", "http://[::1]:9090"},
+		{":9090", "http://127.0.0.1:9090"},
+		{"0.0.0.0:9090", "http://localhost:9090"},
+		{"[::]:9090", "http://[::1]:9090"},
+		{"127.0.0.1:80", "http://127.0.0.1"},
+		{"127.0.0.1:443", "https://127.0.0.1"},
+		{"LOCALHOST:9090", "http://localhost:9090"},
+	} {
+		err := CheckNotSelf(tc.listen, tc.target)
+		if err == nil {
+			t.Errorf("CheckNotSelf(%q, %q) = nil, want an error", tc.listen, tc.target)
+			continue
+		}
+		if !strings.Contains(err.Error(), "the proxy's own --listen address") {
+			t.Errorf("CheckNotSelf(%q, %q) = %q", tc.listen, tc.target, err)
+		}
+	}
+	for _, tc := range []struct{ listen, target string }{
+		{"127.0.0.1:9090", "http://127.0.0.1:3000"},
+		{"127.0.0.1:9090", "http://192.168.1.20:9090"},
+		{"127.0.0.1:9090", "http://[::1]:9090"},
+		{"127.0.0.1:0", "http://127.0.0.1:0"},
+		{"127.0.0.1:80", "https://127.0.0.1"},
+		{"bad", "http://127.0.0.1:9090"},
+		{"127.0.0.1:9090", "localhost:9090"},
+	} {
+		if err := CheckNotSelf(tc.listen, tc.target); err != nil {
+			t.Errorf("CheckNotSelf(%q, %q) = %v, want nil", tc.listen, tc.target, err)
+		}
+	}
+}
+
 func TestStartReportsBindError(t *testing.T) {
 	first, _, err := Start(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), "127.0.0.1:0")
 	if err != nil {

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +38,59 @@ func CheckListen(addr string) error {
 		return fmt.Errorf("invalid listen address %q: the port must be a number from 0 to 65535", addr)
 	}
 	return nil
+}
+
+// CheckNotSelf rejects a target that names the proxy's own listen address,
+// which would make every request loop back into the proxy. It compares
+// literally, without DNS: equal hosts, "localhost" against any loopback
+// address, and a wildcard listen host ("", 0.0.0.0, ::) against a loopback
+// target. A listen or target value that does not parse is left to
+// CheckListen and CheckTarget, and port 0 never matches. Loops this cannot
+// see, such as a LAN address of this machine, are still answered with 508
+// by the proxy.
+func CheckNotSelf(listen, target string) error {
+	listenHost, listenPort, err := net.SplitHostPort(listen)
+	if err != nil {
+		return nil
+	}
+	u, err := url.Parse(target)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return nil
+	}
+	targetPort := u.Port()
+	if targetPort == "" {
+		targetPort = "80"
+		if u.Scheme == "https" {
+			targetPort = "443"
+		}
+	}
+	lp, err1 := strconv.Atoi(listenPort)
+	tp, err2 := strconv.Atoi(targetPort)
+	if err1 != nil || err2 != nil || lp == 0 || lp != tp || !sameHost(listenHost, u.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("--target %s is the proxy's own --listen address %s, so every request would loop back into the proxy; point --target at your app", target, listen)
+}
+
+// sameHost reports whether a connection to targetHost could reach a
+// listener bound to listenHost.
+func sameHost(listenHost, targetHost string) bool {
+	if strings.EqualFold(listenHost, targetHost) {
+		return true
+	}
+	isLocalhost := func(h string) bool { return strings.EqualFold(h, "localhost") }
+	loopback := func(h string) bool {
+		ip := net.ParseIP(h)
+		return isLocalhost(h) || (ip != nil && (ip.IsLoopback() || ip.IsUnspecified()))
+	}
+	if ip := net.ParseIP(listenHost); listenHost == "" || (ip != nil && ip.IsUnspecified()) {
+		return loopback(targetHost)
+	}
+	if isLocalhost(listenHost) || isLocalhost(targetHost) {
+		return loopback(listenHost) && loopback(targetHost)
+	}
+	l, t := net.ParseIP(listenHost), net.ParseIP(targetHost)
+	return l != nil && t != nil && l.Equal(t)
 }
 
 // Start listens on addr and serves proxy in the background. The returned

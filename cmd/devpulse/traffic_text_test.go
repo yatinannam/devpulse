@@ -38,6 +38,9 @@ func TestParseTrafficArgsRejectsBadListenAddressesAsUsageErrors(t *testing.T) {
 		{"--listen", "abc"},
 		{"--listen", "127.0.0.1:"},
 		{"--max-requests", "0"},
+		// A target that is the proxy itself would loop.
+		{"--listen", "127.0.0.1:9090", "--target", "http://127.0.0.1:9090"},
+		{"--listen", "127.0.0.1:9090", "--target", "http://localhost:9090"},
 	} {
 		fs := flag.NewFlagSet("traffic", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
