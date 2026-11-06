@@ -1,6 +1,7 @@
 package project
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -58,7 +59,7 @@ func markerKind(dir string) (string, bool) {
 		return "Node / Vite", true
 	case has("go.mod"):
 		return "Go", true
-	case has("pyproject.toml") || has("requirements.txt") || has("requirements-dev.txt"):
+	case has("pyproject.toml") || hasRequirements(dir):
 		return "Python", true
 	case has("pom.xml") || has("build.gradle") || has("build.gradle.kts"):
 		return "Java", true
@@ -66,6 +67,15 @@ func markerKind(dir string) (string, bool) {
 		return "Node.js", true
 	}
 	return "", false
+}
+
+// hasRequirements reports whether dir holds a requirements*.txt file, such
+// as requirements-prod.txt. The pattern is matched inside dir, so brackets
+// in the directory's own name are not read as pattern syntax, as they would
+// be by filepath.Glob on the joined path.
+func hasRequirements(dir string) bool {
+	matches, err := fs.Glob(os.DirFS(dir), "requirements*.txt")
+	return err == nil && len(matches) > 0
 }
 
 func SelectTarget(info Info, services []discovery.Service) (discovery.Service, bool) {

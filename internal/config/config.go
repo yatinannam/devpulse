@@ -1,11 +1,13 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const projectConfigDir = ".devpulse"
@@ -76,6 +78,7 @@ func LoadWithWarnings() (Config, []string, error) {
 	if err != nil {
 		return c, nil, fmt.Errorf("read config: %w", err)
 	}
+	data = trimBOM(data)
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, nil, fmt.Errorf("decode config: %w", err)
 	}
@@ -83,15 +86,36 @@ func LoadWithWarnings() (Config, []string, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return c, nil, nil
 	}
-	known := map[string]bool{"listen": true, "target": true, "watch_interval": true}
 	var warnings []string
 	for key := range raw {
-		if !known[key] {
+		if !isKnownKey(key) {
 			warnings = append(warnings, fmt.Sprintf("unknown key %q ignored", key))
 		}
 	}
 	sort.Strings(warnings)
 	return c, warnings, nil
+}
+
+// knownKeys are the JSON names of Config's fields, in the order they are
+// written.
+var knownKeys = []string{"listen", "target", "watch_interval"}
+
+// isKnownKey reports whether encoding/json decodes key into a Config field.
+// It matches field names without regard to case, as strings.EqualFold does,
+// so "TARGET" sets the target.
+func isKnownKey(key string) bool {
+	for _, k := range knownKeys {
+		if strings.EqualFold(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// trimBOM drops the UTF-8 byte order mark that Windows PowerShell 5.1 puts
+// at the start of re-saved files; encoding/json rejects it.
+func trimBOM(data []byte) []byte {
+	return bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 }
 
 func Save(c Config) error {
@@ -102,13 +126,60 @@ func SaveProject(c Config, dir string) error {
 	return SaveTo(c, ProjectPath(dir))
 }
 
+// SaveTo writes c to p. Keys in an existing file at p that Config does not
+// know, for example settings written by a newer DevPulse, are kept after
+// the known keys, so an older binary does not erase them.
 func SaveTo(c Config, p string) error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
+		return err
+	}
+	if data, err = appendUnknownKeys(data, p); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return err
 	}
 	return os.WriteFile(p, data, 0600)
+}
+
+// appendUnknownKeys adds the unknown keys of the existing file at p, sorted,
+// to the indented JSON object encoded. A missing or unreadable file, or one
+// that is not a JSON object, has nothing to keep.
+func appendUnknownKeys(encoded []byte, p string) ([]byte, error) {
+	existing, err := os.ReadFile(p)
+	if err != nil {
+		return encoded, nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(trimBOM(existing), &raw); err != nil {
+		return encoded, nil
+	}
+	var unknown []string
+	for key := range raw {
+		if !isKnownKey(key) {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) == 0 {
+		return encoded, nil
+	}
+	sort.Strings(unknown)
+	out := bytes.TrimSuffix(bytes.TrimRight(encoded, "\n"), []byte("}"))
+	out = bytes.TrimRight(out, "\n")
+	for _, key := range unknown {
+		name, err := json.Marshal(key)
+		if err != nil {
+			return nil, err
+		}
+		var value bytes.Buffer
+		if err := json.Indent(&value, raw[key], "  ", "  "); err != nil {
+			return nil, err
+		}
+		out = append(out, ",\n  "...)
+		out = append(out, name...)
+		out = append(out, ": "...)
+		out = append(out, value.Bytes()...)
+	}
+	return append(out, "\n}"...), nil
 }

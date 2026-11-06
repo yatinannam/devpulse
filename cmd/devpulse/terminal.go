@@ -305,9 +305,14 @@ func renderTrafficStart(w io.Writer, width int, listen, target, session string) 
 // path, colored status and latency, and the upstream it went to. Lines are
 // printed as requests arrive, so columns have fixed widths; the path takes
 // what is left, up to 40 columns, and the upstream is dropped first when
-// the terminal is narrow.
+// the terminal is narrow. The method field is 7 columns; a longer method
+// widens it up to 12 columns and is cut with "…" beyond that.
 func trafficLine(width int, r traffic.Request) ui.Line {
-	head := ui.Join(ui.Styled(r.Time.Local().Format("15:04:05"), ui.Muted), ui.Plain(fmt.Sprintf("  %-7s  ", r.Method)))
+	method := ui.Plain(r.Method).Truncate(12)
+	head := ui.Join(
+		ui.Styled(r.Time.Local().Format("15:04:05"), ui.Muted), ui.Plain("  "),
+		method, ui.Plain(strings.Repeat(" ", max(0, 7-method.Width())+2)),
+	)
 	status, latency := ui.Status(r.Status), ui.Latency(r.Latency)
 	numbers := ui.Join(
 		ui.Plain(strings.Repeat(" ", 2+max(0, 3-status.Width()))), status,
@@ -319,7 +324,8 @@ func trafficLine(width int, r traffic.Request) ui.Line {
 		upstream = nil
 		room = width - head.Width() - numbers.Width()
 	}
-	room = min(40, room)
+	// Never negative: strings.Repeat panics on a negative count.
+	room = max(0, min(40, room))
 	path := ui.Plain(r.Path).Truncate(room)
 	path = ui.Join(path, ui.Plain(strings.Repeat(" ", room-path.Width())))
 	return ui.Join(head, path, numbers, upstream)

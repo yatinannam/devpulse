@@ -18,7 +18,7 @@ func TestProbeEntryUsesIPv4LoopbackFirst(t *testing.T) {
 	defer server.Close()
 
 	port := server.Listener.Addr().(*net.TCPAddr).Port
-	got := probeEntry(ports.Entry{Port: port}, time.Second)
+	got := probeEntry(ports.Entry{Port: port}, Timeouts{Dial: time.Second, HTTP: time.Second})
 	if wantURL := fmt.Sprintf("http://127.0.0.1:%d", port); !got.HTTP || got.URL != wantURL {
 		t.Fatalf("probeEntry() = %+v, want HTTP service at %s", got, wantURL)
 	}
@@ -41,7 +41,7 @@ func TestProbeEntryFallsBackToIPv6Loopback(t *testing.T) {
 	defer server.Close()
 
 	port := ln.Addr().(*net.TCPAddr).Port
-	got := probeEntry(ports.Entry{Port: port, PID: "1", State: "LISTEN"}, time.Second)
+	got := probeEntry(ports.Entry{Port: port, PID: "1", State: "LISTEN"}, Timeouts{Dial: time.Second, HTTP: time.Second})
 
 	wantURL := fmt.Sprintf("http://[::1]:%d", port)
 	if !got.HTTP || got.URL != wantURL || got.Kind != "Python / FastAPI" {

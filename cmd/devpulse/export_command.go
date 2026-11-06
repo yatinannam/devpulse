@@ -46,12 +46,12 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 	for _, entry := range requests {
 		record := []string{
 			entry.Time.UTC().Format(time.RFC3339Nano),
-			entry.Method,
-			entry.Path,
+			csvText(entry.Method),
+			csvText(entry.Path),
 			strconv.Itoa(entry.Status),
 			strconv.FormatFloat(float64(entry.Latency)/float64(time.Millisecond), 'f', 3, 64),
 			strconv.FormatInt(entry.Bytes, 10),
-			entry.TargetHost,
+			csvText(entry.TargetHost),
 			strconv.Itoa(entry.TargetPort),
 		}
 		if err := writer.Write(record); err != nil {
@@ -76,6 +76,18 @@ func runExport(sessionPath, outputPath string, opts exportOptions, stdout io.Wri
 		return err
 	}
 	return nil
+}
+
+// csvText neutralizes a text cell that a spreadsheet would evaluate as a
+// formula: one that starts with =, +, -, @, a tab or a carriage return gets
+// a leading apostrophe, which spreadsheets treat as "show this as text".
+// Go's server accepts methods such as "-1+1", and sessions are plain JSON
+// that anyone can edit, so captured values cannot be trusted here.
+func csvText(value string) string {
+	if value != "" && strings.ContainsRune("=+-@\t\r", rune(value[0])) {
+		return "'" + value
+	}
+	return value
 }
 
 func exportCommand(args []string) {
@@ -194,7 +206,7 @@ func writeExportFile(outputPath string, data []byte) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write temporary CSV file: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := syncFile(tmp); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("sync temporary CSV file: %w", err)
 	}

@@ -7,12 +7,12 @@ import (
 )
 
 func TestSnapshotOf(t *testing.T) {
-	entries := []Entry{{Port: 3000, Process: "node", PID: "1"}, {Port: 5432, Process: "postgres", PID: "2"}}
+	entries := []Entry{{Port: 3000, Process: "node", PID: "1"}, {Port: 5432, Process: "postgres", PID: "2"}, {Port: 3000, Process: "wslrelay", PID: "3"}}
 	s := SnapshotOf(entries)
-	if len(s) != 2 {
-		t.Fatalf("len=%d want 2", len(s))
+	if len(s) != 3 {
+		t.Fatalf("len=%d want 3", len(s))
 	}
-	if s[3000].Process != "node" || s[5432].PID != "2" {
+	if s[Key{3000, "1"}].Process != "node" || s[Key{3000, "3"}].Process != "wslrelay" || s[Key{5432, "2"}].Process != "postgres" {
 		t.Fatalf("unexpected snapshot: %+v", s)
 	}
 }
@@ -37,11 +37,11 @@ func TestTolerateNoMatchesTreatsExitOneAsEmptyResult(t *testing.T) {
 }
 
 func TestWatchSurvivesTransientListFailures(t *testing.T) {
+	initial := []Entry{{Port: 3000, PID: "1"}}
 	results := []struct {
 		entries []Entry
 		err     error
 	}{
-		{[]Entry{{Port: 3000, PID: "1"}}, nil},
 		{nil, errors.New("transient")},
 		{nil, nil},
 	}
@@ -58,10 +58,7 @@ func TestWatchSurvivesTransientListFailures(t *testing.T) {
 
 	var removed []Entry
 	var errs []error
-	err := watchWith(ticks, list, func(_, r []Entry) { removed = append(removed, r...) }, func(e error) { errs = append(errs, e) })
-	if err != nil {
-		t.Fatalf("watchWith returned %v", err)
-	}
+	watchWith(initial, ticks, list, func(_, r []Entry) { removed = append(removed, r...) }, func(e error) { errs = append(errs, e) })
 	if len(errs) != 1 {
 		t.Fatalf("expected the transient error to be reported once, got %v", errs)
 	}
@@ -73,8 +70,8 @@ func TestWatchSurvivesTransientListFailures(t *testing.T) {
 func TestWatchReportsRestartWithNewPIDOnSamePort(t *testing.T) {
 	// nodemon or air can restart a server between two polls: the port stays
 	// open but the process behind it is new.
+	initial := []Entry{{Port: 3000, Process: "node", PID: "100"}, {Port: 5432, Process: "postgres", PID: "7"}}
 	polls := [][]Entry{
-		{{Port: 3000, Process: "node", PID: "100"}, {Port: 5432, Process: "postgres", PID: "7"}},
 		{{Port: 3000, Process: "node", PID: "200"}, {Port: 5432, Process: "postgres", PID: "7"}},
 		{{Port: 3000, Process: "node", PID: "200"}, {Port: 5432, Process: "postgres", PID: "7"}},
 	}
@@ -91,10 +88,7 @@ func TestWatchReportsRestartWithNewPIDOnSamePort(t *testing.T) {
 
 	type change struct{ added, removed []Entry }
 	var changes []change
-	err := watchWith(ticks, list, func(a, r []Entry) { changes = append(changes, change{a, r}) }, nil)
-	if err != nil {
-		t.Fatalf("watchWith returned %v", err)
-	}
+	watchWith(initial, ticks, list, func(a, r []Entry) { changes = append(changes, change{a, r}) }, nil)
 	if len(changes) != 1 {
 		t.Fatalf("got %d change events, want 1 for the restart and none for the unchanged poll: %#v", len(changes), changes)
 	}
@@ -104,5 +98,62 @@ func TestWatchReportsRestartWithNewPIDOnSamePort(t *testing.T) {
 	}
 	if len(got.added) != 1 || got.added[0] != (Entry{Port: 3000, Process: "node", PID: "200"}) {
 		t.Fatalf("added = %#v, want the new node process on 3000", got.added)
+	}
+}
+
+func TestWatchKeepsTwoProcessesOnOnePortApart(t *testing.T) {
+	// app-a holds 127.0.0.1:8080 and app-b [::1]:8080. Only app-b exits,
+	// and then app-c joins the port while app-a keeps running.
+	initial := []Entry{{Port: 8080, Process: "app-a", PID: "100"}, {Port: 8080, Process: "app-b", PID: "200"}}
+	polls := [][]Entry{
+		{{Port: 8080, Process: "app-a", PID: "100"}},
+		{{Port: 8080, Process: "app-a", PID: "100"}, {Port: 8080, Process: "app-c", PID: "300"}},
+	}
+	call := 0
+	list := func() ([]Entry, error) {
+		p := polls[call]
+		call++
+		return p, nil
+	}
+	ticks := make(chan time.Time, 2)
+	ticks <- time.Time{}
+	ticks <- time.Time{}
+	close(ticks)
+
+	type change struct{ added, removed []Entry }
+	var changes []change
+	watchWith(initial, ticks, list, func(a, r []Entry) { changes = append(changes, change{a, r}) }, nil)
+	if len(changes) != 2 {
+		t.Fatalf("got %d change events, want 2: %#v", len(changes), changes)
+	}
+	if got := changes[0]; len(got.added) != 0 || len(got.removed) != 1 || got.removed[0].PID != "200" {
+		t.Fatalf("first poll: added=%#v removed=%#v, want only app-b (pid 200) closed", got.added, got.removed)
+	}
+	if got := changes[1]; len(got.removed) != 0 || len(got.added) != 1 || got.added[0].PID != "300" {
+		t.Fatalf("second poll: added=%#v removed=%#v, want only app-c (pid 300) opened", got.added, got.removed)
+	}
+}
+
+func TestWatchStartsFromTheListingThatWasPrinted(t *testing.T) {
+	// ports --watch prints the table and then watches. A port that opens
+	// after the table's listing but before the first tick must be reported,
+	// so the watch starts from the printed entries instead of polling again.
+	printed := []Entry{{Port: 3000, Process: "node", PID: "1"}}
+	calls := 0
+	list := func() ([]Entry, error) {
+		calls++
+		return []Entry{{Port: 3000, Process: "node", PID: "1"}, {Port: 5173, Process: "node", PID: "2"}}, nil
+	}
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Time{}
+	close(ticks)
+
+	var added []Entry
+	watchWith(printed, ticks, list, func(a, _ []Entry) { added = append(added, a...) }, nil)
+	if calls != 1 {
+		t.Fatalf("list called %d times, want once per tick and no extra starting poll", calls)
+	}
+	if len(added) != 1 || added[0].Port != 5173 {
+		t.Fatalf("added = %#v, want port 5173, which opened after the table was printed", added)
 	}
 }

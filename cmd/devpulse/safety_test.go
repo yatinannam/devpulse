@@ -2,14 +2,114 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+// runMain runs main() with args in a child test process, so tests can check
+// paths that end in os.Exit. The session and configuration point at missing
+// files in a temporary directory unless env overrides them (later entries
+// win). It returns stdout, stderr and the exit code.
+func runMain(t *testing.T, env []string, args ...string) (string, string, int) {
+	t.Helper()
+	encoded, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunMainHelper$")
+	cmd.Env = append(os.Environ(),
+		"DEVPULSE_RUN_MAIN="+string(encoded),
+		"DEVPULSE_SESSION="+filepath.Join(tmp, "session.json"),
+		"DEVPULSE_CONFIG="+filepath.Join(tmp, "config.json"),
+	)
+	cmd.Env = append(cmd.Env, env...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	code := 0
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Fatal(err)
+		}
+		code = exit.ExitCode()
+	}
+	return stdout.String(), stderr.String(), code
+}
+
+// TestRunMainHelper is the child side of runMain. It does nothing in a
+// normal test run.
+func TestRunMainHelper(t *testing.T) {
+	encoded := os.Getenv("DEVPULSE_RUN_MAIN")
+	if encoded == "" {
+		return
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(encoded), &args); err != nil {
+		os.Exit(99)
+	}
+	os.Args = append([]string{"devpulse"}, args...)
+	main()
+	os.Exit(0)
+}
+
+func TestVersionAndHelpRejectExtraArguments(t *testing.T) {
+	// README: a stray positional argument is rejected with exit status 2
+	// and never silently ignored. version and help ignored theirs.
+	for _, args := range [][]string{
+		{"version", "extra"}, {"-v", "extra"}, {"--version", "extra"},
+		{"help", "report"}, {"-h", "extra"}, {"--help", "extra"},
+	} {
+		stdout, stderr, code := runMain(t, nil, args...)
+		if code != 2 || !strings.Contains(stderr, "unexpected argument \""+args[1]+"\"") || stdout != "" {
+			t.Errorf("devpulse %s: exit %d, stdout %q, stderr %q; want exit 2 and an unexpected argument error", strings.Join(args, " "), code, stdout, stderr)
+		}
+	}
+	if stdout, _, code := runMain(t, nil, "version"); code != 0 || stdout != "devpulse dev\n" {
+		t.Errorf("devpulse version: exit %d, stdout %q", code, stdout)
+	}
+	if stdout, _, code := runMain(t, nil, "help"); code != 0 || !strings.Contains(stdout, "devpulse <command> [flags]") {
+		t.Errorf("devpulse help: exit %d, stdout %q", code, stdout)
+	}
+}
+
+func TestBaselineRefusesToOverwriteItsSession(t *testing.T) {
+	sessionPath := writeReportFixture(t)
+	original, err := os.ReadFile(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]string{"same path": sessionPath}
+	for name, alias := range sessionAliases(t, sessionPath) {
+		targets[name] = alias
+	}
+	for name, target := range targets {
+		t.Run(name, func(t *testing.T) {
+			_, stderr, code := runMain(t, nil, "baseline", "--from", sessionPath, "--to", target)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2; stderr: %s", code, stderr)
+			}
+			if !strings.Contains(stderr, "must differ from the source session") {
+				t.Fatalf("stderr should explain the refusal: %q", stderr)
+			}
+			after, err := os.ReadFile(sessionPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, original) {
+				t.Fatal("baseline overwrote its source session")
+			}
+		})
+	}
+}
 
 // sessionAliases returns paths that name the same file as sessionPath but
 // differ as strings, so a plain path comparison cannot detect them.
@@ -115,5 +215,34 @@ func TestParseWatchInterval(t *testing.T) {
 	}
 	if got, err := parseWatchInterval("5s"); err != nil || got.Seconds() != 5 {
 		t.Errorf("parseWatchInterval(5s) = %v, %v", got, err)
+	}
+}
+
+func TestCheckConfigUpdateRejectsValuesTrafficWouldRefuse(t *testing.T) {
+	// `config --target` and `config --listen` used to save anything, so a
+	// typo was only reported later, when `traffic` refused to start.
+	for _, tc := range []struct{ target, listen, interval string }{
+		{target: "localhost:3000"},
+		{target: "ftp://x"},
+		{target: "http://localhost:99999"},
+		{listen: "abc"},
+		{listen: "9090"},
+		{interval: "0s"},
+	} {
+		if err := checkConfigUpdate(tc.target, tc.listen, tc.interval); err == nil {
+			t.Errorf("checkConfigUpdate(%q, %q, %q) succeeded, want an error", tc.target, tc.listen, tc.interval)
+		}
+	}
+	// Empty values mean "not given" and leave the setting unchanged.
+	for _, tc := range []struct{ target, listen, interval string }{
+		{},
+		{target: "http://localhost:8080"},
+		{listen: "127.0.0.1:9090"},
+		{interval: "5s"},
+		{target: "https://api.local", listen: ":9090", interval: "1s"},
+	} {
+		if err := checkConfigUpdate(tc.target, tc.listen, tc.interval); err != nil {
+			t.Errorf("checkConfigUpdate(%q, %q, %q) = %v, want nil", tc.target, tc.listen, tc.interval, err)
+		}
 	}
 }

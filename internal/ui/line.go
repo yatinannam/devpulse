@@ -18,11 +18,27 @@ type Span struct {
 // plain text; box-drawing and glyph characters count as one column.
 type Line []Span
 
-// Plain returns a line of unstyled text.
-func Plain(text string) Line { return Line{{Text: text}} }
+// Plain returns a line of unstyled text. Control characters are replaced, as
+// described at sanitize.
+func Plain(text string) Line { return Line{{Text: sanitize(text)}} }
 
-// Styled returns a line drawn in one style.
-func Styled(text string, style Style) Line { return Line{{Text: text, Style: style}} }
+// Styled returns a line drawn in one style. Control characters are replaced,
+// as described at sanitize.
+func Styled(text string, style Style) Line { return Line{{Text: sanitize(text), Style: style}} }
+
+// sanitize replaces C0 control characters (including tab and newline), DEL
+// and C1 control characters with U+FFFD, and so does invalid UTF-8. Paths,
+// methods and process names come from session files and the OS: a raw ESC
+// in one could clear the screen or retitle the terminal, and a newline would
+// split a table row. Every rune maps to one rune, so widths are unchanged.
+func sanitize(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return utf8.RuneError
+		}
+		return r
+	}, text)
+}
 
 // Join concatenates lines into one.
 func Join(parts ...Line) Line {
@@ -164,12 +180,14 @@ func TruncatePath(path string, n int) string {
 	return "…" + string(runes[len(runes)-(n-1):])
 }
 
-// Wrap breaks plain text into lines of at most width columns.
+// Wrap breaks plain text into lines of at most width columns. Newlines in
+// text still force a break; other control characters are replaced.
 func Wrap(text string, width int) []string {
-	lines := Plain(text).Wrap(width)
-	out := make([]string, len(lines))
-	for i, l := range lines {
-		out[i] = l.Plain()
+	var out []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		for _, l := range Plain(paragraph).Wrap(width) {
+			out = append(out, l.Plain())
+		}
 	}
 	return out
 }

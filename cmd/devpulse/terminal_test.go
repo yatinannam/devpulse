@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/yatinannam/devpulse/internal/discovery"
+	"github.com/yatinannam/devpulse/internal/doctor"
+	"github.com/yatinannam/devpulse/internal/summary"
 	"github.com/yatinannam/devpulse/internal/traffic"
 	"github.com/yatinannam/devpulse/internal/ui"
 )
@@ -87,6 +89,31 @@ func TestRenderStatusBodyReportsAnUnreadableSession(t *testing.T) {
 	renderStatusBody(&b, 120, statusServices, traffic.Session{}, fmt.Errorf("decode session: unexpected EOF"), "demo.json")
 	if !strings.HasSuffix(b.String(), "\n▲ Could not read demo.json: decode session: unexpected EOF\n") {
 		t.Fatalf("got\n%s", b.String())
+	}
+}
+
+func TestTextOutputReplacesControlCharactersFromSessions(t *testing.T) {
+	// A session file is plain JSON that anyone can hand over. A path holding
+	// ESC sequences cleared the screen and retitled the terminal, and a
+	// newline started a fake table row, even with NO_COLOR set.
+	plainOutput(t)
+	evil := "/ok\x1b[2J\x1b]0;pwned\x07\nFAKE  200"
+	r := traffic.Request{Time: at(10, 0, 1), Method: "GET\x1b[31m", Path: evil, Status: 500, Latency: 1300 * time.Millisecond, TargetHost: "localhost", TargetPort: 3000}
+	requests := []traffic.Request{r}
+	var b strings.Builder
+	renderRecent(&b, 100, "s.json", 1, requests)
+	renderSummary(&b, 100, "s.json", requests, summary.Build(requests), summary.Slowest(requests, 5))
+	doctor.Print(&b, []doctor.Finding{{Level: "WARN", Title: "Duplicate requests", Detail: "GET " + evil + " called 3 times", Advice: "Check the loop."}}, 3, 100)
+	renderStatusBody(&b, 100, []discovery.Service{{Port: 3000, HTTP: true, Kind: "Node"}}, traffic.Session{Version: 1, Requests: requests}, nil, "s.json")
+	b.WriteString(trafficLine(100, r).String() + "\n")
+	out := b.String()
+	if strings.ContainsAny(out, "\x1b\x07") {
+		t.Fatalf("control characters from the session reached the terminal:\n%q", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "FAKE") {
+			t.Fatalf("a newline in the path started a new line: %q\n%s", line, out)
+		}
 	}
 }
 

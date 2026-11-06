@@ -3,9 +3,12 @@ package traffic
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -30,7 +33,12 @@ func SaveSession(path string, entries []Request) error {
 		return fmt.Errorf("create temporary session: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	keepTemp := false
+	defer func() {
+		if !keepTemp {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	if err := tmp.Chmod(0600); err != nil {
 		_ = tmp.Close()
@@ -49,10 +57,48 @@ func SaveSession(path string, entries []Request) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temporary session: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("save session: %w", err)
+	if err := renameWithRetry(tmpPath, path); err != nil {
+		// The temporary file is complete and synced, and it is the only
+		// copy of the capture, so keep it and say where it is.
+		keepTemp = true
+		return fmt.Errorf("save session: %w (the captured session was kept in %s)", err, tmpPath)
 	}
 	return nil
+}
+
+// Renames that fail because another process holds the target open are
+// retried this many times, renameRetryDelay apart (about a second in all).
+const (
+	renameAttempts   = 10
+	renameRetryDelay = 100 * time.Millisecond
+)
+
+func renameWithRetry(from, to string) error {
+	var err error
+	for attempt := 1; attempt <= renameAttempts; attempt++ {
+		if err = os.Rename(from, to); err == nil || !retryableRename(err) {
+			return err
+		}
+		if attempt < renameAttempts {
+			time.Sleep(renameRetryDelay)
+		}
+	}
+	return err
+}
+
+// retryableRename reports whether a failed rename may succeed if retried.
+// On Windows, a process reading the session (another devpulse command, an
+// editor, a virus scanner) holds it open without FILE_SHARE_DELETE, and
+// replacing it then fails with ERROR_ACCESS_DENIED or
+// ERROR_SHARING_VIOLATION until the reader closes it. Other systems allow
+// renaming over an open file.
+func retryableRename(err error) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	const errorAccessDenied, errorSharingViolation = 5, 32
+	var errno syscall.Errno
+	return errors.As(err, &errno) && (errno == errorAccessDenied || errno == errorSharingViolation)
 }
 
 // utf8BOM is the byte order mark Windows PowerShell 5.1 writes at the start

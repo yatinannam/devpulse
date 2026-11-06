@@ -51,16 +51,36 @@ func printChange(added, removed []Entry) {
 }
 
 // RenderChange writes one line per closed port (a red -) and opened port
-// (a green +), such as "10:01:02  + :5173  node (pid 9912) opened". Closed
-// ports come first, so a restart that changes a port's PID reads as the
-// old process closing and the new one opening.
+// (a green +), such as "10:01:02  + :5173  node (pid 9912) opened", in port
+// order. On the same port the closed process comes first, so a restart that
+// changes a port's PID reads as the old process closing and the new one
+// opening.
 func RenderChange(w io.Writer, now time.Time, width int, added, removed []Entry) {
-	stamp := now.Format("15:04:05")
+	type change struct {
+		entry  Entry
+		closed bool
+	}
+	changes := make([]change, 0, len(added)+len(removed))
 	for _, e := range removed {
-		writeChange(w, width, stamp, ui.Styled("-", ui.Error), e, "closed")
+		changes = append(changes, change{e, true})
 	}
 	for _, e := range added {
-		writeChange(w, width, stamp, ui.Styled("+", ui.OK), e, "opened")
+		changes = append(changes, change{e, false})
+	}
+	sort.SliceStable(changes, func(i, j int) bool {
+		if changes[i].entry.Port != changes[j].entry.Port {
+			return changes[i].entry.Port < changes[j].entry.Port
+		}
+		return changes[i].closed && !changes[j].closed
+	})
+
+	stamp := now.Format("15:04:05")
+	for _, c := range changes {
+		if c.closed {
+			writeChange(w, width, stamp, ui.Styled("-", ui.Error), c.entry, "closed")
+		} else {
+			writeChange(w, width, stamp, ui.Styled("+", ui.OK), c.entry, "opened")
+		}
 	}
 }
 

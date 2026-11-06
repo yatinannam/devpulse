@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 
 const Version = 1
 const FileName = "baseline.json"
+
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 type Snapshot struct {
 	Version   int       `json:"version"`
@@ -94,11 +97,31 @@ func Save(path string, snapshot Snapshot) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create baseline directory: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	// Write a uniquely named temporary file in the target directory, flush
+	// it, then rename it into place, so a crash never leaves a partial
+	// baseline and a failed rename leaves nothing behind.
+	tmp, err := os.CreateTemp(dir, ".baseline-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary baseline: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure temporary baseline: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write baseline: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush baseline: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary baseline: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("save baseline: %w", err)
 	}
 	return nil
@@ -110,7 +133,9 @@ func Load(path string) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("read baseline: %w", err)
 	}
 	var snapshot Snapshot
-	if err := json.Unmarshal(data, &snapshot); err != nil {
+	// A file re-saved by Windows PowerShell 5.1 starts with a UTF-8 byte
+	// order mark, which encoding/json rejects; sessions already ignore it.
+	if err := json.Unmarshal(bytes.TrimPrefix(data, utf8BOM), &snapshot); err != nil {
 		return Snapshot{}, fmt.Errorf("decode baseline: %w", err)
 	}
 	if snapshot.Version != Version {

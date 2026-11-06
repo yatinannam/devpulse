@@ -7,34 +7,41 @@ import (
 	"time"
 )
 
-type Snapshot map[int]Entry
+// Key identifies one process listening on one port. Two processes can share
+// a port (127.0.0.1:8080 and [::1]:8080, or a forked server), so the port
+// alone is not enough.
+type Key struct {
+	Port int
+	PID  string
+}
+
+type Snapshot map[Key]Entry
 
 func SnapshotOf(entries []Entry) Snapshot {
 	s := make(Snapshot, len(entries))
 	for _, e := range entries {
-		s[e.Port] = e
+		s[Key{e.Port, e.PID}] = e
 	}
 	return s
 }
 
-// Watch polls the listener table every interval and reports opened and closed
-// ports. A failed poll is passed to onError and skipped, so one transient
-// netstat/ss/lsof failure does not end the watch. Only the first poll is fatal.
-func Watch(interval time.Duration, onChange func(added, removed []Entry), onError func(error)) error {
+// Watch polls the listener table every interval and reports ports opened and
+// closed since initial, the listing the caller already showed. Starting from
+// that listing instead of polling again means nothing that changes between
+// the two is missed. A failed poll is passed to onError and skipped, so one
+// transient netstat/ss/lsof failure does not end the watch.
+func Watch(initial []Entry, interval time.Duration, onChange func(added, removed []Entry), onError func(error)) error {
 	if interval <= 0 {
 		return fmt.Errorf("watch interval must be positive, got %s", interval)
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	return watchWith(ticker.C, List, onChange, onError)
+	watchWith(initial, ticker.C, List, onChange, onError)
+	return nil
 }
 
-func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange func(added, removed []Entry), onError func(error)) error {
-	previousEntries, err := list()
-	if err != nil {
-		return err
-	}
-	previous := SnapshotOf(previousEntries)
+func watchWith(initial []Entry, ticks <-chan time.Time, list func() ([]Entry, error), onChange func(added, removed []Entry), onError func(error)) {
+	previous := SnapshotOf(initial)
 
 	for range ticks {
 		currentEntries, err := list()
@@ -46,33 +53,39 @@ func watchWith(ticks <-chan time.Time, list func() ([]Entry, error), onChange fu
 		}
 		current := SnapshotOf(currentEntries)
 
+		// A restart within one tick (nodemon, air) keeps the port but
+		// changes the PID, so it shows up as the old process closed and the
+		// new one opened. Another process on the same port is untouched.
 		var added, removed []Entry
-		for port, entry := range current {
-			old, ok := previous[port]
-			if !ok {
-				added = append(added, entry)
-			} else if old.PID != entry.PID {
-				// A restart within one tick (nodemon, air) keeps the port
-				// but changes the PID: report the old process as closed and
-				// the new one as opened.
-				removed = append(removed, old)
+		for key, entry := range current {
+			if _, ok := previous[key]; !ok {
 				added = append(added, entry)
 			}
 		}
-		for port, entry := range previous {
-			if _, ok := current[port]; !ok {
+		for key, entry := range previous {
+			if _, ok := current[key]; !ok {
 				removed = append(removed, entry)
 			}
 		}
-		sort.Slice(added, func(i, j int) bool { return added[i].Port < added[j].Port })
-		sort.Slice(removed, func(i, j int) bool { return removed[i].Port < removed[j].Port })
+		sortEntries(added)
+		sortEntries(removed)
 
 		if len(added) > 0 || len(removed) > 0 {
 			onChange(added, removed)
 		}
 		previous = current
 	}
-	return nil
+}
+
+// sortEntries orders entries by port, then PID, so the output of one poll
+// does not depend on map iteration order.
+func sortEntries(entries []Entry) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Port != entries[j].Port {
+			return entries[i].Port < entries[j].Port
+		}
+		return entries[i].PID < entries[j].PID
+	})
 }
 
 // tolerateNoMatches treats exit status 1 as an empty result. lsof exits 1

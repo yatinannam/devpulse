@@ -56,8 +56,24 @@ func Build(entries []traffic.Request, width time.Duration) []Bucket {
 // absolute time, which aligns to UTC, so for a +05:30 user hourly buckets
 // would start at :30 local. Shifting by the local offset of t's instant
 // before truncating, and back afterwards, starts them on the local hour.
+//
+// A DST change between the bucket's start and t means t's offset is not the
+// one in effect at the start, so shifting back by it would land an hour (or
+// 30 minutes) off and split one local day across two overlapping buckets.
+// In that case the start is re-anchored with the offset in effect there.
+// Keeping t's offset whenever it is consistent keeps the repeated hour of a
+// fall-back day as two separate buckets instead of one two-hour bucket.
 func bucketStart(t time.Time, width time.Duration) time.Time {
+	offset := localOffset(t)
+	wall := t.Add(offset).Truncate(width)
+	start := wall.Add(-offset)
+	if startOffset := localOffset(start); startOffset != offset {
+		start = wall.Add(-startOffset)
+	}
+	return start
+}
+
+func localOffset(t time.Time) time.Duration {
 	_, offset := t.In(time.Local).Zone()
-	shift := time.Duration(offset) * time.Second
-	return t.Add(shift).Truncate(width).Add(-shift)
+	return time.Duration(offset) * time.Second
 }

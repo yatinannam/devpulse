@@ -212,6 +212,44 @@ func TestRunExportEscapesQuotedAndMultilineCSVFields(t *testing.T) {
 	}
 }
 
+func TestRunExportNeutralizesSpreadsheetFormulas(t *testing.T) {
+	// Spreadsheets evaluate a cell that starts with = + - @ (and, in some,
+	// a tab or carriage return) as a formula. Go's server accepts methods
+	// such as "-1+1", and sessions are plain JSON, so text cells that could
+	// start a formula get a leading apostrophe.
+	sessionPath := filepath.Join(t.TempDir(), "session.json")
+	when := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	entries := []traffic.Request{
+		{Time: when, Method: "-1+1", Path: `=HYPERLINK("http://x")`, Status: 200, TargetHost: "=cmd", TargetPort: 80},
+		{Time: when, Method: "+SUM", Path: "@SUM(1)", Status: 200, TargetHost: "@host", TargetPort: 80},
+		{Time: when, Method: "GET", Path: "\t=1", Status: 200, TargetHost: "\r=1", TargetPort: 80},
+		{Time: when, Method: "GET", Path: "/a?x=-1&y=@", Status: 200, TargetHost: "localhost", TargetPort: 80},
+	}
+	if err := traffic.SaveSession(sessionPath, entries); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runExport(sessionPath, "-", exportOptions{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	records := readExportCSV(t, out.String())
+	want := [][3]string{
+		{"'-1+1", `'=HYPERLINK("http://x")`, "'=cmd"},
+		{"'+SUM", "'@SUM(1)", "'@host"},
+		{"GET", "'\t=1", "'\r=1"},
+		{"GET", "/a?x=-1&y=@", "localhost"},
+	}
+	if len(records) != len(want)+1 {
+		t.Fatalf("got %d records, want %d", len(records), len(want)+1)
+	}
+	for i, w := range want {
+		got := [3]string{records[i+1][1], records[i+1][2], records[i+1][6]}
+		if got != w {
+			t.Errorf("row %d: method, path, host = %q, want %q", i+1, got, w)
+		}
+	}
+}
+
 func TestParseExportTime(t *testing.T) {
 	t.Run("empty means unset", func(t *testing.T) {
 		got, err := parseExportTime("--since", "")

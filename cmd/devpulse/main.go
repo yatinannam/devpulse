@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -64,8 +66,10 @@ func main() {
 	case "config":
 		configCommand(os.Args[2:])
 	case "version", "-v", "--version":
+		parseNoArgs("version", os.Args[2:])
 		fmt.Println("devpulse " + version)
 	case "help", "-h", "--help":
+		parseNoArgs("help", os.Args[2:])
 		printHelp()
 	default:
 		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\n\n", os.Args[1])
@@ -83,7 +87,7 @@ func initCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(250 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Patient)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -114,7 +118,13 @@ func baselineCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(300 * time.Millisecond)
+	// A --to that names the session would replace the captured traffic
+	// with the snapshot.
+	if err := ensureDistinctOutput(*from, *to); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse baseline: --to: %v\n", err)
+		os.Exit(2)
+	}
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -143,7 +153,7 @@ func diffCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -229,12 +239,39 @@ func recentCommand(args []string) {
 	renderRecent(os.Stdout, ui.TermWidth(), *from, len(s.Requests), recent)
 }
 
+// checkConfigUpdate validates the values `devpulse config` was asked to
+// save, with the same rules `traffic` and `watch` apply when they use them,
+// so a typo is refused now instead of breaking the next command. Empty
+// values were not given and are not checked.
+func checkConfigUpdate(target, listen, interval string) error {
+	if target != "" {
+		if err := traffic.CheckTarget(target); err != nil {
+			return err
+		}
+	}
+	if listen != "" {
+		if err := traffic.CheckListen(listen); err != nil {
+			return err
+		}
+	}
+	if interval != "" {
+		if _, err := parseWatchInterval(interval); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func configCommand(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
 	setTarget := fs.String("target", "", "set default upstream")
 	setListen := fs.String("listen", "", "set proxy listen address")
 	setInterval := fs.String("watch-interval", "", "set watch refresh interval")
 	mustParseArgs(fs, args)
+	if err := checkConfigUpdate(*setTarget, *setListen, *setInterval); err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse config: %v\n", err)
+		os.Exit(2)
+	}
 
 	c := loadConfig()
 	changed := false
@@ -247,10 +284,6 @@ func configCommand(args []string) {
 		changed = true
 	}
 	if *setInterval != "" {
-		if _, err := parseWatchInterval(*setInterval); err != nil {
-			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
-			os.Exit(2)
-		}
 		c.WatchInterval = *setInterval
 		changed = true
 	}
@@ -280,7 +313,7 @@ func portsCommand(args []string) {
 		fmt.Println()
 		ui.Writeln(os.Stdout, ui.Styled("Watching for port changes. Press Ctrl+C to stop.", ui.Muted))
 		onError := func(err error) { fmt.Fprintf(os.Stderr, "devpulse: %v (retrying)\n", err) }
-		if err := ports.Watch(time.Second, ports.PrintChange, onError); err != nil {
+		if err := ports.Watch(entries, time.Second, ports.PrintChange, onError); err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			os.Exit(1)
 		}
@@ -298,32 +331,70 @@ func sessionPath() string {
 	return filepath.Join(home, ".devpulse", "session.json")
 }
 
+// trafficArgs are the validated flags of the traffic command.
+type trafficArgs struct {
+	Listen      string
+	Target      string
+	MaxRequests int
+}
+
+// parseTrafficArgs parses the traffic flags, defaulting --listen and
+// --target to the configuration, and reports invalid values as usage errors
+// so trafficCommand exits 2 before it starts anything.
+func parseTrafficArgs(fs *flag.FlagSet, args []string, c config.Config) (trafficArgs, error) {
+	var a trafficArgs
+	fs.StringVar(&a.Listen, "listen", c.Listen, "proxy listen address")
+	fs.StringVar(&a.Target, "target", c.Target, "upstream application")
+	fs.IntVar(&a.MaxRequests, "max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
+	if err := parseArgs(fs, args); err != nil {
+		return a, err
+	}
+	if a.MaxRequests < 1 {
+		return a, fmt.Errorf("--max-requests must be at least 1, got %d", a.MaxRequests)
+	}
+	if err := traffic.CheckListen(a.Listen); err != nil {
+		return a, err
+	}
+	if err := traffic.CheckNotSelf(a.Listen, a.Target); err != nil {
+		return a, err
+	}
+	return a, nil
+}
+
+// startTrafficProxy binds the listener, then prints the banner with the
+// address the proxy actually got, so --listen 127.0.0.1:0 shows the real
+// port and a failed bind prints no banner at all.
+func startTrafficProxy(w io.Writer, width int, handler http.Handler, listen, target, session string) (*http.Server, <-chan error, error) {
+	server, serveErr, err := traffic.Start(handler, listen)
+	if err != nil {
+		return nil, nil, err
+	}
+	renderTrafficStart(w, width, server.Addr, target, session)
+	return server, serveErr, nil
+}
+
 func trafficCommand(args []string) {
 	c := loadConfig()
 	fs := flag.NewFlagSet("traffic", flag.ExitOnError)
-	listen := fs.String("listen", c.Listen, "proxy listen address")
-	target := fs.String("target", c.Target, "upstream application")
-	maxRequests := fs.Int("max-requests", traffic.DefaultMaxRequests, "keep at most this many requests; older ones are dropped")
-	mustParseArgs(fs, args)
-	if *maxRequests < 1 {
-		fmt.Fprintf(os.Stderr, "devpulse traffic: --max-requests must be at least 1, got %d\n", *maxRequests)
+	a, err := parseTrafficArgs(fs, args, c)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devpulse traffic: %v\n", err)
 		os.Exit(2)
 	}
 
 	width := ui.TermWidth()
-	recorder := traffic.NewLimitedRecorder(*maxRequests, func(r traffic.Request) {
+	recorder := traffic.NewLimitedRecorder(a.MaxRequests, func(r traffic.Request) {
 		ui.Writeln(os.Stdout, trafficLine(width, r))
 	}, func() {
-		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", *maxRequests)
+		fmt.Fprintf(os.Stderr, "devpulse: captured more than %d requests; dropping the oldest (raise --max-requests to keep more)\n", a.MaxRequests)
 	})
-	proxy, err := traffic.NewProxy(*target, recorder)
+	proxy, err := traffic.NewProxy(a.Target, recorder)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	renderTrafficStart(os.Stdout, width, *listen, *target, sessionPath())
 
-	server, serveErr, err := traffic.Start(traffic.Handler(proxy), *listen)
+	server, serveErr, err := startTrafficProxy(os.Stdout, width, traffic.Handler(proxy), a.Listen, a.Target, sessionPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -363,7 +434,7 @@ func statusCommand(args []string) {
 	from := fs.String("from", sessionPath(), "traffic session to summarize")
 	mustParseArgs(fs, args)
 
-	services, err := discovery.Discover(300 * time.Millisecond)
+	services, err := discovery.Discover(discovery.Quick)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
@@ -410,7 +481,7 @@ func watchCommand(args []string) {
 	pulse := ratePulse{limit: 30}
 	frames := 0
 	refresh := func() {
-		services, err := discovery.Discover(300 * time.Millisecond)
+		services, err := discovery.Discover(discovery.Quick)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 			return

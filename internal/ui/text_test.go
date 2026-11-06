@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,6 +76,28 @@ func TestWrap(t *testing.T) {
 		if got := Wrap(tc.in, tc.width); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("Wrap(%q, %d) = %q, want %q", tc.in, tc.width, got, tc.want)
 		}
+	}
+}
+
+func TestPlainAndStyledReplaceControlCharacters(t *testing.T) {
+	// Paths, methods and process names come from session files and the OS.
+	// A raw ESC could clear the screen or retitle the window, and a newline
+	// splits a table row in two, so C0 controls, DEL and C1 controls are
+	// drawn as U+FFFD instead.
+	in := "/a\x1b[2J\x07\n\t\r\x00\x7f\u0085\u009bz"
+	want := "/a�[2J" + strings.Repeat("�", 8) + "z"
+	if got := Plain(in).Plain(); got != want {
+		t.Errorf("Plain(%q) = %q, want %q", in, got, want)
+	}
+	if got := Styled(in, Error).Plain(); got != want {
+		t.Errorf("Styled(%q) = %q, want %q", in, got, want)
+	}
+	if got := Truncate(in, 40); got != want {
+		t.Errorf("Truncate(%q) = %q, want %q", in, got, want)
+	}
+	printable := "/日本語/😀 ok… ▲"
+	if got := Plain(printable).Plain(); got != printable {
+		t.Errorf("printable text changed: %q, want %q", got, printable)
 	}
 }
 
