@@ -31,6 +31,19 @@ func mustParseArgs(flags *flag.FlagSet, args []string) {
 	}
 }
 
+// parseNoArgs parses the arguments of a command that takes none, such as
+// version or help. -h prints its usage; an unknown flag or any other word
+// is a usage error (exit 2), as a stray positional argument is for every
+// other command.
+func parseNoArgs(name string, args []string) {
+	flags := flag.NewFlagSet(name, flag.ExitOnError)
+	_ = flags.Parse(args) // ExitOnError: Parse exits on its own errors.
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "devpulse %s: unexpected argument %q: %s takes no arguments\n", name, flags.Arg(0), name)
+		os.Exit(2)
+	}
+}
+
 // ensureDistinctOutput fails when outputPath names the same file as
 // sourcePath. It compares file identity rather than path strings, so case
 // variants on Windows and macOS, hard links and symlinks are all caught.

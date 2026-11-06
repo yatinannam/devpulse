@@ -61,7 +61,7 @@ devpulse doctor      # errors, slow requests, request loops
 devpulse watch       # live dashboard, refreshed every 2s
 ```
 
-`devpulse`, `devpulse help`, `-h` and `--help` print the command list. `devpulse version`, `--version` and `-v` print the build version.
+`devpulse`, `devpulse help`, `-h` and `--help` print the command list. `devpulse version`, `--version` and `-v` print the build version. Neither takes arguments: `devpulse help report` or `devpulse version extra` exits 2.
 
 ---
 

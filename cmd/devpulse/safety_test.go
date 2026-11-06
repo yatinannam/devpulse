@@ -61,6 +61,26 @@ func TestRunMainHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestVersionAndHelpRejectExtraArguments(t *testing.T) {
+	// README: a stray positional argument is rejected with exit status 2
+	// and never silently ignored. version and help ignored theirs.
+	for _, args := range [][]string{
+		{"version", "extra"}, {"-v", "extra"}, {"--version", "extra"},
+		{"help", "report"}, {"-h", "extra"}, {"--help", "extra"},
+	} {
+		stdout, stderr, code := runMain(t, nil, args...)
+		if code != 2 || !strings.Contains(stderr, "unexpected argument \""+args[1]+"\"") || stdout != "" {
+			t.Errorf("devpulse %s: exit %d, stdout %q, stderr %q; want exit 2 and an unexpected argument error", strings.Join(args, " "), code, stdout, stderr)
+		}
+	}
+	if stdout, _, code := runMain(t, nil, "version"); code != 0 || stdout != "devpulse dev\n" {
+		t.Errorf("devpulse version: exit %d, stdout %q", code, stdout)
+	}
+	if stdout, _, code := runMain(t, nil, "help"); code != 0 || !strings.Contains(stdout, "devpulse <command> [flags]") {
+		t.Errorf("devpulse help: exit %d, stdout %q", code, stdout)
+	}
+}
+
 func TestBaselineRefusesToOverwriteItsSession(t *testing.T) {
 	sessionPath := writeReportFixture(t)
 	original, err := os.ReadFile(sessionPath)

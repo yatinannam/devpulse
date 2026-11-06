@@ -64,8 +64,10 @@ func main() {
 	case "config":
 		configCommand(os.Args[2:])
 	case "version", "-v", "--version":
+		parseNoArgs("version", os.Args[2:])
 		fmt.Println("devpulse " + version)
 	case "help", "-h", "--help":
+		parseNoArgs("help", os.Args[2:])
 		printHelp()
 	default:
 		fmt.Fprintf(os.Stderr, "devpulse: unknown command %q\n\n", os.Args[1])
