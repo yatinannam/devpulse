@@ -207,7 +207,7 @@ func PrintServices(w io.Writer, groups []ServiceTraffic, width int) {
 			continue
 		}
 		if g.Service.Kind == "" {
-			g.Service.Kind = "HTTP service"
+			g.Service.Kind = discovery.KindHTTPService
 		}
 		httpGroups = append(httpGroups, g)
 		portWidth = max(portWidth, len(port))

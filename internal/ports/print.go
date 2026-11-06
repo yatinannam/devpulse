@@ -50,15 +50,17 @@ func printChange(added, removed []Entry) {
 	RenderChange(os.Stdout, time.Now(), ui.TermWidth(), added, removed)
 }
 
-// RenderChange writes one line per opened port (a green +) and closed port
-// (a red -), such as "10:01:02  + :5173  node (pid 9912) opened".
+// RenderChange writes one line per closed port (a red -) and opened port
+// (a green +), such as "10:01:02  + :5173  node (pid 9912) opened". Closed
+// ports come first, so a restart that changes a port's PID reads as the
+// old process closing and the new one opening.
 func RenderChange(w io.Writer, now time.Time, width int, added, removed []Entry) {
 	stamp := now.Format("15:04:05")
-	for _, e := range added {
-		writeChange(w, width, stamp, ui.Styled("+", ui.OK), e, "opened")
-	}
 	for _, e := range removed {
 		writeChange(w, width, stamp, ui.Styled("-", ui.Error), e, "closed")
+	}
+	for _, e := range added {
+		writeChange(w, width, stamp, ui.Styled("+", ui.OK), e, "opened")
 	}
 }
 
