@@ -38,6 +38,8 @@ The first row is a stable header with these columns:
 
 CSV values are escaped using Go's standard CSV writer, so commas, quotes, and newlines in paths or values remain valid CSV. A session with no matching requests still exports its header row.
 
+Spreadsheets evaluate a cell as a formula when it starts with `=`, `+`, `-` or `@`, and some also do so after a leading tab or carriage return. A text cell (`method`, `path` or `target_host`) that starts with one of these characters is therefore written with a leading apostrophe. For example, a method of `-1+1` is exported as `'-1+1`, which spreadsheets show as text. Go's HTTP server accepts such methods, and a session file can be edited by hand. Captured paths start with `/` or are `*`, so real paths are never changed. Remove the apostrophe if a program needs the original value. Filters such as `--method` and `--path-prefix` still match the original values.
+
 ## Filters
 
 - `--method` compares HTTP methods without regard to case or surrounding whitespace.
