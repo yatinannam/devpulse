@@ -263,7 +263,7 @@ Output fits the terminal width: `COLUMNS` when it is set, otherwise the detected
                  │    snapshot after shutdown, so in-flight requests are kept
                  │    a second Ctrl+C quits at once, without saving
                  ▼
-            session.json (temp file + fsync + rename, mode 0600; exit 1 if the save fails)
+            session.json (temp file + fsync + rename, mode 0600; exit 1 if the save fails, keeping the temp file)
 ```
 
 Each captured request becomes one record:
@@ -295,7 +295,7 @@ A `--target` that is the proxy's own `--listen` address (for example `--listen 1
 
 A capture keeps the newest `--max-requests` requests (default `10000`; values below `1` are a usage error, exit `2`). The first time an older request is dropped, one warning line goes to stderr, and the final message says how many were lost: `Saved 10000 requests to ~/.devpulse/session.json (2500 older requests were dropped; raise --max-requests to keep more)`.
 
-Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections, closes connections that have not sent a request (for example a browser's speculative preconnect), and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The "requests still running after 5s were cut off" warning appears only when a request was actually running at the deadline. The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). Clients get 10 seconds to send their request headers.
+Shutdown is bounded. On Ctrl+C or SIGTERM the proxy stops accepting connections, closes connections that have not sent a request (for example a browser's speculative preconnect), and waits up to 5 seconds for in-flight requests, then closes whatever is still open (for example a server-sent event stream). The "requests still running after 5s were cut off" warning appears only when a request was actually running at the deadline. The session is snapshotted after that, so requests that finished during the wait are saved. Pressing Ctrl+C a second time quits immediately without saving. `devpulse traffic` exits `1` if the session cannot be saved, or if the listener fails while running (it still saves what it captured). On Windows, replacing the session fails while another process has it open (for example `devpulse watch` reading it), so the save retries for about a second. If it still fails, the complete temporary file is kept next to the session (`.session-*.tmp`) and the error names it, so the capture can be recovered by renaming it. Clients get 10 seconds to send their request headers.
 
 `report` and `export` write through a temporary file and an atomic rename, set mode `0600`, and refuse an `--out` that is the same file as `--from`. The check uses file identity (`os.SameFile`), so case variants, hard links and symlinks are caught too. `baseline` makes the same check on `--to` and exits `2` instead of replacing the session with the snapshot. See [docs/markdown-reports.md](docs/markdown-reports.md).
 
