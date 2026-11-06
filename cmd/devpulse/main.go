@@ -90,13 +90,7 @@ func initCommand(args []string) {
 	}
 	target, ok := project.SelectTarget(projectInfo, services)
 	if !ok {
-		fmt.Println("DEVPULSE INIT")
-		fmt.Println("────────────────────────────────────────────────")
-		fmt.Printf("Project: %s\n", projectInfo.Name)
-		fmt.Printf("Detected: %s\n", projectInfo.Kind)
-		fmt.Println()
-		fmt.Println("No local HTTP service matched this project.")
-		fmt.Println("Start the application, then run `devpulse init` again.")
+		renderInit(os.Stdout, ui.TermWidth(), projectInfo, "", "")
 		return
 	}
 
@@ -106,15 +100,7 @@ func initCommand(args []string) {
 		fmt.Fprintf(os.Stderr, "devpulse: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("DEVPULSE INIT")
-	fmt.Println("────────────────────────────────────────────────")
-	fmt.Printf("Project:  %s\n", projectInfo.Name)
-	fmt.Printf("Detected: %s\n", projectInfo.Kind)
-	fmt.Printf("Target:   %s\n", target.URL)
-	fmt.Println()
-	fmt.Println("✓ DevPulse configured for this project")
-	fmt.Println()
-	fmt.Println("Next: devpulse traffic")
+	renderInit(os.Stdout, ui.TermWidth(), projectInfo, target.URL, config.ProjectPath(projectInfo.Root))
 }
 
 func baselineCommand(args []string) {
@@ -265,7 +251,9 @@ func configCommand(args []string) {
 			os.Exit(1)
 		}
 	}
-	fmt.Printf("Config: %s\nlisten=%s\ntarget=%s\nwatch_interval=%s\n", config.Path(), c.Listen, c.Target, c.WatchInterval)
+	source := config.Path()
+	_, statErr := os.Stat(source)
+	renderConfig(os.Stdout, ui.TermWidth(), c, source, statErr == nil, changed)
 }
 
 func portsCommand(args []string) {
@@ -483,28 +471,5 @@ func doctorCommand(args []string) {
 }
 
 func printHelp() {
-	fmt.Println("DevPulse — local development observability")
-	fmt.Println()
-	fmt.Println("Usage: devpulse <command>")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  init       Detect the current project and configure DevPulse")
-	fmt.Println("  baseline   Capture the current environment as a baseline")
-	fmt.Println("  diff       Compare the current environment with the baseline")
-	fmt.Println("  summary    Summarize latency, errors, and slowest requests")
-	fmt.Println("  timeline   Group captured traffic into chronological buckets")
-	fmt.Println("  anomalies  Detect regressions against a saved baseline")
-	fmt.Println("  validate   Validate a captured traffic session")
-	fmt.Println("  report     Generate a Markdown traffic report")
-	fmt.Println("  export     Export captured requests as filtered CSV")
-	fmt.Println("  ports      List local listening ports and processes")
-	fmt.Println("  traffic    Capture HTTP traffic through the proxy")
-	fmt.Println("  status     Show services and captured traffic")
-	fmt.Println("  doctor     Analyze a captured session")
-	fmt.Println("  recent     Show the most recent captured requests")
-	fmt.Println("  watch      Continuously refresh service/traffic health")
-	fmt.Println("  config     View or change persistent defaults")
-	fmt.Println("  version    Print the current build version")
-	fmt.Println()
-	fmt.Println("Use 'devpulse <command> --help' for command-specific flags.")
+	renderHelp(os.Stdout, ui.TermWidth())
 }

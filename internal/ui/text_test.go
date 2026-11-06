@@ -41,6 +41,24 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestTruncatePathKeepsTheEnd(t *testing.T) {
+	cases := []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{`C:\Users\dev\projects\my-app\.devpulse\config.json`, 29, `…my-app\.devpulse\config.json`},
+		{"/home/dev/.devpulse/config.json", 40, "/home/dev/.devpulse/config.json"},
+		{"/a/b", 1, "…"},
+		{"/a/b", 0, ""},
+	}
+	for _, tc := range cases {
+		if got := TruncatePath(tc.in, tc.n); got != tc.want {
+			t.Errorf("TruncatePath(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+		}
+	}
+}
+
 func TestWrap(t *testing.T) {
 	cases := []struct {
 		in    string

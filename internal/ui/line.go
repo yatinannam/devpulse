@@ -151,6 +151,19 @@ func Truncate(s string, n int) string {
 	return Plain(s).Truncate(n).Plain()
 }
 
+// TruncatePath shortens a file path to at most n columns by dropping its
+// start, so the file name stays visible: "…my-app\.devpulse\config.json".
+func TruncatePath(path string, n int) string {
+	runes := []rune(path)
+	if len(runes) <= n {
+		return path
+	}
+	if n <= 0 {
+		return ""
+	}
+	return "…" + string(runes[len(runes)-(n-1):])
+}
+
 // Wrap breaks plain text into lines of at most width columns.
 func Wrap(text string, width int) []string {
 	lines := Plain(text).Wrap(width)

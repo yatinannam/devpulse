@@ -18,6 +18,7 @@ import (
 	"github.com/yatinannam/devpulse/internal/config"
 	"github.com/yatinannam/devpulse/internal/diff"
 	"github.com/yatinannam/devpulse/internal/discovery"
+	"github.com/yatinannam/devpulse/internal/project"
 	"github.com/yatinannam/devpulse/internal/status"
 	"github.com/yatinannam/devpulse/internal/traffic"
 	"github.com/yatinannam/devpulse/internal/ui"
@@ -182,6 +183,108 @@ func renderDiff(w io.Writer, width int, sessionPath, baselinePath string, change
 	renderChanges(w, width, rows)
 	fmt.Fprintln(w)
 	ui.Writeln(w, ui.Styled(ui.Count(len(changes), "change", "changes"), ui.Muted))
+}
+
+// helpGroups lists every command in the README's groups.
+var helpGroups = []struct {
+	title    string
+	commands [][2]string
+}{
+	{"Discovery and capture", [][2]string{
+		{"ports", "List local listening ports and processes"},
+		{"traffic", "Capture HTTP traffic through the proxy"},
+		{"status", "Show services and captured traffic"},
+		{"watch", "Continuously refresh service and traffic health"},
+	}},
+	{"Analysis", [][2]string{
+		{"recent", "Show the most recent captured requests"},
+		{"doctor", "Analyze a captured session"},
+		{"summary", "Summarize latency, errors, and slowest requests"},
+		{"timeline", "Group captured traffic into chronological buckets"},
+		{"validate", "Validate a captured traffic session"},
+	}},
+	{"Baselines and change detection", [][2]string{
+		{"baseline", "Capture the current environment as a baseline"},
+		{"diff", "Compare the current environment with the baseline"},
+		{"anomalies", "Detect regressions against a saved baseline"},
+	}},
+	{"Reporting and export", [][2]string{
+		{"report", "Generate a Markdown or JSON traffic report"},
+		{"export", "Export captured requests as filtered CSV"},
+	}},
+	{"Setup", [][2]string{
+		{"init", "Detect the current project and configure DevPulse"},
+		{"config", "View or change persistent defaults"},
+		{"version", "Print the current build version"},
+	}},
+}
+
+// renderHelp writes the command overview, grouped as the README groups it.
+func renderHelp(w io.Writer, width int) {
+	ui.Title(w, width, "", ui.Plain("local development observability"))
+	ui.KVList(w, width, 0, []ui.KV{{Key: "Usage", Value: ui.Plain("devpulse <command> [flags]")}})
+	nameWidth := 0
+	for _, g := range helpGroups {
+		for _, c := range g.commands {
+			nameWidth = max(nameWidth, len(c[0]))
+		}
+	}
+	for _, g := range helpGroups {
+		fmt.Fprintln(w)
+		ui.Heading(w, g.title, "")
+		table := ui.NewTable(ui.Column{Min: nameWidth}, ui.Column{Flex: true, Wrap: true, Min: 20})
+		table.Indent = 2
+		for _, c := range g.commands {
+			table.Row(ui.Plain(fmt.Sprintf("%-*s", nameWidth, c[0])), ui.Plain(c[1]))
+		}
+		table.Render(w, width)
+	}
+	fmt.Fprintln(w)
+	ui.Writeln(w, ui.Join(ui.Styled("Run ", ui.Muted), ui.Plain("devpulse <command> --help"), ui.Styled(" for command-specific flags.", ui.Muted)))
+}
+
+// renderInit writes the result of init. An empty target means no local
+// HTTP service matched the project.
+func renderInit(w io.Writer, width int, info project.Info, target, savedPath string) {
+	ui.Title(w, width, "init", nil)
+	label := info.Name
+	if info.Kind != "" {
+		label += " (" + info.Kind + ")"
+	}
+	if target == "" {
+		ui.Marked(w, width, ui.LevelWarn, ui.Plain("No local HTTP service matched "+label+"."))
+		ui.Wrapped(w, width, 2, ui.Plain("Start the application, then run devpulse init again."))
+		return
+	}
+	ui.Marked(w, width, ui.LevelOK, ui.Plain("Configured "+label+" with target "+target))
+	const saved = "  Saved to "
+	ui.Writeln(w, ui.Styled(saved+ui.TruncatePath(savedPath, width-len(saved)), ui.Muted))
+	fmt.Fprintln(w)
+	ui.Writeln(w, ui.Join(ui.Styled("Next: ", ui.Muted), ui.Plain("devpulse traffic")))
+}
+
+// renderConfig writes the active configuration as aligned key-value pairs
+// and where it comes from. exists reports whether the source file is on
+// disk; saved, whether this run just wrote it.
+func renderConfig(w io.Writer, width int, c config.Config, source string, exists, saved bool) {
+	var context ui.Line
+	if saved {
+		context = ui.Plain("saved")
+	}
+	ui.Title(w, width, "config", context)
+	// Values start after the widest key, "Watch interval", and two spaces.
+	room := width - len("Watch interval") - 2
+	note := ""
+	if !exists {
+		note = " (not created yet)"
+	}
+	sourceValue := ui.Join(ui.Plain(ui.TruncatePath(source, room-len(note))), ui.Styled(note, ui.Muted))
+	ui.KVList(w, width, 0, []ui.KV{
+		{Key: "Listen", Value: ui.Plain(c.Listen)},
+		{Key: "Target", Value: ui.Plain(c.Target)},
+		{Key: "Watch interval", Value: ui.Plain(c.WatchInterval)},
+		{Key: "Source", Value: sourceValue},
+	})
 }
 
 // latencyFact is a dim label followed by a colored latency: "p95 1.3s".
