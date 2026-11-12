@@ -465,7 +465,7 @@ devpulse --version
 
 ### From source
 
-Requires Go 1.22 or later. CI and releases use Go 1.27.3.
+Requires Go 1.22 or later. The cross-platform CI matrix tests with Go 1.27.3; security scans and release builds use Go 1.27.4.
 
 ```bash
 git clone https://github.com/yatinannam/devpulse.git
@@ -512,7 +512,7 @@ Pushing a `v*.*.*` tag runs `.github/workflows/release.yml`:
   tag v1.2.3
       │
       ▼
-  go test ./...  (Go 1.27.3)
+  go test ./...  (Go 1.27.4)
       │
       ▼
   GoReleaser v2  ─►  CGO_ENABLED=0, ldflags -s -w -X main.version
