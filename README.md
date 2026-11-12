@@ -41,6 +41,7 @@ Everything downstream (`status`, `doctor`, `summary`, `timeline`, `baseline`, `d
 - [Development](#development)
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
+- [Documentation guides](docs/README.md)
 
 ---
 
